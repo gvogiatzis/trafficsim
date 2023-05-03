@@ -59,6 +59,15 @@ class TrafficControlEnv:
             dim *= len(logic.getPhases())
         return dim
     
+    def sample_action(self):
+        """ Picks a random action
+        
+        The action picked is an integer between 0 and self.get_num_actions()-1
+        inclusive 
+        """
+        return randint(0, self.get_num_actions()-1)    
+    
+    
     def get_obs_dim(self):
         """ Returns the dimensionality of the observation vector
         """
@@ -210,7 +219,7 @@ if __name__ == "__main__":
         R.append(r)
 
     env.close()
-    
+
     plt.plot(R,'b-', label="negative total time loss")
     plt.legend()
     plt.show()
