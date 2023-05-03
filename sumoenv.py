@@ -37,25 +37,29 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015):
+    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False):
         """ A basic constructor
         """
 
+        self.episode_length = episode_length
         self._net_fname = net_fname
         self.vehicle_spawn_rate = vehicle_spawn_rate
-        self._net = sumolib.net.readNet(self._net_fname)
+        self._net = sumolib.net.readNet(self._net_fname, withPrograms=True)
         self._sumo = None
         self._vehcnt = 0
+        self.state_wrapper = state_wrapper
+        self.episode_step_countdown=episode_length
+        self.sumo_timestep = sumo_timestep
+        self.use_gui = use_gui
         
-
     def get_num_actions(self):
         """ Returns the number of possible actions corresponding to all traffic
         light combinations """
 
-        tls = self._sumo.trafficlight.getIDList()
+        tls=self._net.getTrafficLights()        
         dim = 1
         for tl in tls:
-            logic = self._sumo.trafficlight.getAllProgramLogics(tl)[0]
+            logic = tl.getPrograms()['0']
             dim *= len(logic.getPhases())
         return dim
     
@@ -67,12 +71,11 @@ class TrafficControlEnv:
         """
         return randint(0, self.get_num_actions()-1)    
     
-    
+
     def get_obs_dim(self):
         """ Returns the dimensionality of the observation vector
         """
-
-        return self._sumo.lane.getIDCount()
+        return sum(len(e.getLanes()) for e in self._net.getEdges())
 
 
     def reset(self, seed = None):
@@ -87,20 +90,28 @@ class TrafficControlEnv:
         ----------
         seed : int, optional
             A random seed passed to sumo for repeatability (not implemented yet)
-
+        
+        Returns
+        -------
+        observation: numpy.array or self.state_wrapper(observation) if
+        self.state_wrapper is defined.
         """
 
-        if self._sumo is not None and self._sumo.isLoaded():
+        if self._sumo is not None and traci.isLoaded():
             self._sumo.close()
             
-        traci.start(['sumo-gui','-n',self._net_fname,'--start','--quit-on-end'])
+        if self.use_gui:
+            traci.start(['sumo-gui','-n',self._net_fname,'--start','--quit-on-end'])
+        else:
+            traci.start(['sumo','-n',self._net_fname,'--start','--quit-on-end','--no-warnings'])
         self._sumo = traci.getConnection()
         self._initialize_routes()
         self._spawnVehicles()
         self._sumo.simulationStep()
+        self.episode_step_countdown = self.episode_length
 
         self.actionCombinations = self._getActionCombinations()
-        return self._getObservation(), 0.0
+        return self._getObservation()
     
     def step(self, action):
         """ Steps the simulation through one timestep
@@ -122,14 +133,28 @@ class TrafficControlEnv:
 
         reward: float
             The reward obtained by the agent for that timestep
+
+        done: boolean
+            is true if the episode is finished
         """
 
+        self._applyAction(action)
+        for _ in range(self.sumo_timestep):
+            self._spawnVehicles()
+            self._sumo.simulationStep()
+        self.episode_step_countdown -= 1
+
+        done = self.episode_step_countdown==0
+        return self._getObservation(), -self._getCurrentTotalTimeLoss(), done
+    
+    def _applyAction(self, action: int):
+        """ Applies a traffic control action to the traffic lights
+        """
         for (tl, a) in self._getActionCombinations()[action]:
             self._sumo.trafficlight.setPhase(tl,a)
-        self._spawnVehicles()
-        self._sumo.simulationStep()
-        return self._getObservation(), -self._getCurrentTotalTimeLoss()
-    
+
+
+
     def close(self):
         """
         Closes the simulation
@@ -186,11 +211,16 @@ class TrafficControlEnv:
         return timeloss
     
     def _getObservation(self):
-        lanes = self._sumo.lane.getIDList()
+        # lanes = self._sumo.lane.getIDList() # This includes :xyz internals
+        lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
         result = []
         for lane in lanes:
-            result.append(self._sumo.lane.getLastStepVehicleNumber(lane))
-        return np.array(result)
+            # result.append(self._sumo.lane.getLastStepVehicleNumber(lane.getID()))
+            result.append(self._sumo.lane.getLastStepHaltingNumber(lane.getID()))
+        if self.state_wrapper is not None:
+            return self.state_wrapper(np.array(result))
+        else:
+            return np.array(result)
 
     def _initialize_routes(self):
         routecnt = 0
@@ -215,7 +245,7 @@ if __name__ == "__main__":
     env.reset()
     A = env.get_num_actions()
     for t in range(1000):
-        obs, r = env.step(randint(0,A-1))
+        obs, r, done = env.step(randint(0,A-1))
         R.append(r)
 
     env.close()
