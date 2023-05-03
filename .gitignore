@@ -1,2 +1,3 @@
 .DS_Store
 sumo_data/
+__pycache__/
