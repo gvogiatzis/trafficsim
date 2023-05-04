@@ -1,3 +1,5 @@
 .DS_Store
 sumo_data/
 __pycache__/
+*.pt
+state.sumo

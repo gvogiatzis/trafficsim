@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import sumolib
 import traci
 
-from random import random, randint
+import random
 
 
 class TrafficControlEnv:
@@ -37,10 +37,12 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False):
-        """ A basic constructor
+    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None):
+        """ A basic constructor. We read the network file with sumolib and we
+        start the sumo (or sumo-gui) program. We then initialize routes and save
+        the state for quick reloading whenever we reset.
         """
-
+        random.seed(seed)
         self.episode_length = episode_length
         self._net_fname = net_fname
         self.vehicle_spawn_rate = vehicle_spawn_rate
@@ -51,6 +53,16 @@ class TrafficControlEnv:
         self.episode_step_countdown=episode_length
         self.sumo_timestep = sumo_timestep
         self.use_gui = use_gui
+        sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
+        sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
+        if seed is not None:
+            sumo_command.extend(['--seed',str(seed)])
+        else:
+            sumo_command.extend(['--random'])
+        traci.start(sumo_command,verbose=True)
+        self._sumo = traci.getConnection()
+        self._initialize_routes()
+        self._sumo.simulation.saveState('state.sumo')
         
     def get_num_actions(self):
         """ Returns the number of possible actions corresponding to all traffic
@@ -69,7 +81,7 @@ class TrafficControlEnv:
         The action picked is an integer between 0 and self.get_num_actions()-1
         inclusive 
         """
-        return randint(0, self.get_num_actions()-1)    
+        return random.randint(0, self.get_num_actions()-1)    
     
 
     def get_obs_dim(self):
@@ -97,15 +109,8 @@ class TrafficControlEnv:
         self.state_wrapper is defined.
         """
 
-        if self._sumo is not None and traci.isLoaded():
-            self._sumo.close()
-            
-        if self.use_gui:
-            traci.start(['sumo-gui','-n',self._net_fname,'--start','--quit-on-end'])
-        else:
-            traci.start(['sumo','-n',self._net_fname,'--start','--quit-on-end','--no-warnings'])
-        self._sumo = traci.getConnection()
-        self._initialize_routes()
+        self._sumo.simulation.loadState('state.sumo')
+
         self._spawnVehicles()
         self._sumo.simulationStep()
         self.episode_step_countdown = self.episode_length
@@ -165,7 +170,7 @@ class TrafficControlEnv:
 
     def _spawnVehicles(self):
         for routeID in self._getAllRouteIDs():
-            if random() < self.vehicle_spawn_rate:
+            if random.random() < self.vehicle_spawn_rate:
                 vehID = f"veh{self._vehcnt:08d}"
                 self._sumo.vehicle.add(vehID, routeID)
                 self._vehcnt +=1
