@@ -3,3 +3,4 @@ sumo_data/
 __pycache__/
 *.pt
 state.sumo
+real_tracks/

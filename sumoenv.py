@@ -28,7 +28,6 @@ import traci
 
 import random
 
-
 class TrafficControlEnv:
     """ The main class that interfaces to sumo.
     
@@ -59,8 +58,9 @@ class TrafficControlEnv:
             sumo_command.extend(['--seed',str(seed)])
         else:
             sumo_command.extend(['--random'])
-        traci.start(sumo_command,verbose=True)
-        self._sumo = traci.getConnection()
+        traci.start(sumo_command,verbose=True, label="sim1")
+
+        self._sumo = traci.getConnection(label="sim1")
         self._initialize_routes()
         self._sumo.simulation.saveState('state.sumo')
         
@@ -147,6 +147,7 @@ class TrafficControlEnv:
         for _ in range(self.sumo_timestep):
             self._spawnVehicles()
             self._sumo.simulationStep()
+            
         self.episode_step_countdown -= 1
 
         done = self.episode_step_countdown==0
@@ -164,9 +165,12 @@ class TrafficControlEnv:
         """
         Closes the simulation
         """
+        if os.path.exists('state.sumo'):
+            os.remove('state.sumo')
         if traci.isLoaded():
             self._sumo.close()
             self._sumo=None
+        
 
     def _spawnVehicles(self):
         for routeID in self._getAllRouteIDs():
@@ -240,7 +244,7 @@ class TrafficControlEnv:
                             routeID = f"route{routecnt:04d}:{e1.getID()}->{e2.getID()}"
                             self._sumo.route.add(routeID, [e1.getID(), e2.getID()])
                             routecnt += 1
-    
+
 
 if __name__ == "__main__":
     env = TrafficControlEnv()

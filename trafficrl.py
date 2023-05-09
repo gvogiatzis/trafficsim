@@ -45,7 +45,6 @@ def updateQNet_batch(qnet, batch, optimizer, loss):
     optimizer.step()
 
 
-# env = TrafficControlEnv(net_fname="sumo_data/ThreeLaneJunction.net.xml",vehicle_spawn_rate=0.1, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=100)
 env = TrafficControlEnv(net_fname=args.net, vehicle_spawn_rate=args.spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=args.episode_length,use_gui=args.use_gui,sumo_timestep=args.sumo_timestep, seed=args.seed)
 
 device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
@@ -61,19 +60,11 @@ if args.cmd=="train":
     batchsize=args.batch_size
     replaybuffer = deque(maxlen=args.replay_buffer_size)
 
-# qnet = MLPnet(state_size,512,512,512,num_actions).to(device)
-# loadModel(args.)
 if args.input is not None:
     qnet = loadModel(args.input)
 else:
     qnet = MLPnet(state_size, *args.network_layers, num_actions).to(device)
 
-# print(qnet)
-# exit(0)
-# qnet = MLPnet(state_size,512,512,512,num_actions).to(device)
-# qnet.load_state_dict(torch.load("TwoJunction.dqn.pt"))
-
-# optim = torch.optim.Adam(qnet.parameters(), lr= 0.001)
 if args.cmd=="train":
     optim = torch.optim.RMSprop(qnet.parameters(), lr= args.lr)
     loss = nn.MSELoss()
