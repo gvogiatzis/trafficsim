@@ -4,3 +4,6 @@ __pycache__/
 *.pt
 state.sumo
 real_tracks/
+sumo_outputs/
+*.pk
+splines.py

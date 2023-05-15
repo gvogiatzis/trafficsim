@@ -20,13 +20,13 @@ for t in range(1000):
 import os
 import sys
 from pathlib import Path
-
+from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
 import sumolib
 import traci
 
-import random
+import random, pickle
 
 class TrafficControlEnv:
     """ The main class that interfaces to sumo.
@@ -36,12 +36,15 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None):
+    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path=None):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
         """
         random.seed(seed)
+        self.total_steps_run=0
+        self.current_episode = 0
+        self.output_path = output_path
         self.episode_length = episode_length
         self._net_fname = net_fname
         self.vehicle_spawn_rate = vehicle_spawn_rate
@@ -53,7 +56,9 @@ class TrafficControlEnv:
         self.sumo_timestep = sumo_timestep
         self.use_gui = use_gui
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
-        sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
+        # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
+        sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log', '--step-length', str(step_length)])
+
         if seed is not None:
             sumo_command.extend(['--seed',str(seed)])
         else:
@@ -68,12 +73,15 @@ class TrafficControlEnv:
         """ Returns the number of possible actions corresponding to all traffic
         light combinations """
 
-        tls=self._net.getTrafficLights()        
-        dim = 1
-        for tl in tls:
-            logic = tl.getPrograms()['0']
-            dim *= len(logic.getPhases())
-        return dim
+        tls=self._net.getTrafficLights() 
+        if len(tls)>0:     
+            dim = 1
+            for tl in tls:
+                logic = tl.getPrograms()['0']
+                dim *= len(logic.getPhases())
+            return dim
+        else:
+            return 0
     
     def sample_action(self):
         """ Picks a random action
@@ -118,7 +126,7 @@ class TrafficControlEnv:
         self.actionCombinations = self._getActionCombinations()
         return self._getObservation()
     
-    def step(self, action):
+    def step(self, action=None):
         """ Steps the simulation through one timestep
         
         Executes a single simulation step after passing an action to the
@@ -142,22 +150,43 @@ class TrafficControlEnv:
         done: boolean
             is true if the episode is finished
         """
-
-        self._applyAction(action)
-        for _ in range(self.sumo_timestep):
+        if action is not None:
+            self._applyAction(action)
+        for _ in range(self.sumo_timestep):            
             self._spawnVehicles()
             self._sumo.simulationStep()
-            
+            self.total_steps_run+=1
+        
+            if self.output_path is not None:
+                self._saveVehicles(self.output_path, use_total_time=True)
+
         self.episode_step_countdown -= 1
 
         done = self.episode_step_countdown==0
         return self._getObservation(), -self._getCurrentTotalTimeLoss(), done
     
+    def _saveVehicles(self, output_path, use_total_time=False):
+        if use_total_time:
+            fname = f"{output_path}/{self.total_steps_run:009}.pk"
+        else:
+            step = self.episode_length-self.episode_step_countdown
+            fname = f"{output_path}/{self.current_episode:03}_{step:04d}.pk"
+        with open(fname, "w") as f:
+            for v in self._sumo.vehicle.getIDList():
+                route_edges = self._sumo.vehicle.getRoute(v)
+                x,y = self._sumo.vehicle.getPosition(v)
+                e0 = route_edges[0]
+                e1 = route_edges[-1]
+                routeID = self.route_dict[e0][e1]
+                f.write(f"{routeID}, {x}, {y}\n")
+
     def _applyAction(self, action: int):
         """ Applies a traffic control action to the traffic lights
         """
-        for (tl, a) in self._getActionCombinations()[action]:
-            self._sumo.trafficlight.setPhase(tl,a)
+        actionCombinations = self._getActionCombinations()
+        if len(actionCombinations)>0:
+            for (tl, a) in actionCombinations[action]:
+                self._sumo.trafficlight.setPhase(tl,a)
 
 
 
@@ -232,33 +261,77 @@ class TrafficControlEnv:
             return np.array(result)
 
     def _initialize_routes(self):
+        self.route_dict = defaultdict(dict)
         routecnt = 0
-        edge_counts=dict()
         edges = self._net.getEdges()
         for e1 in edges:
-            edge_counts[e1.getID()]=[]
             if e1.is_fringe():
                 for e2 in self._net.getReachable(e1):
                     if e2.is_fringe():
                         if e1!=e2 and e1.getID().replace('-','') != e2.getID().replace('-',''):
                             routeID = f"route{routecnt:04d}:{e1.getID()}->{e2.getID()}"
                             self._sumo.route.add(routeID, [e1.getID(), e2.getID()])
+                            self.route_dict[e1.getID()][e2.getID()] = routeID
                             routecnt += 1
+
+    def get_route_trajectories(self, save_file = None, plot_traj=False):
+        route_traj = dict()
+        for routeID in self._getAllRouteIDs():
+            route=[]
+            vehID = "veh"+routeID
+            self._sumo.vehicle.add(vehID, routeID)
+            self._sumo.simulationStep()
+            while self._sumo.vehicle.getIDCount()>0:
+                route.append(self._sumo.vehicle.getPosition(vehID))
+                self._sumo.simulationStep()
+            route_traj[routeID] = route
+        if save_file is not None:
+            with open(save_file, 'wb') as f:
+                pickle.dump(route_traj,f)
+        if plot_traj:
+            plt.figure()
+            for r,xy in route_traj.items():
+                X = [x for (x,y) in xy]
+                Y = [y for (x,y) in xy]
+                plt.plot(X,Y,'-')
+            plt.show()
+
+        return route_traj
 
 
 if __name__ == "__main__":
-    env = TrafficControlEnv()
+    # env = TrafficControlEnv(net_fname = 'RussianJunction/RussianJunctionNoLights.net.xml', step_length=0.01, use_gui=True)
 
-    R=[]
+    # route_traj = env.get_route_trajectories(save_file="sumo_routes.pts", plot_traj=True)
+    # env.close()
 
-    env.reset()
-    A = env.get_num_actions()
-    for t in range(1000):
-        obs, r, done = env.step(randint(0,A-1))
-        R.append(r)
 
+
+    # R=[]
+    # env.reset()
+    # A = env.get_num_actions()
+    # for t in range(1000):
+    #     obs, r, done = env.step(randint(0,A-1))
+    #     R.append(r)
+    # env.close()
+    # plt.plot(R,'b-', label="negative total time loss")
+    # plt.legend()
+    # plt.show()
+
+    env = TrafficControlEnv(net_fname = 'RussianJunction/RussianJunctionNoLights.net.xml', use_gui=False, output_path="sumo_outputs", step_length=0.1)
+    print(env._sumo.route.getIDList())
     env.close()
 
-    plt.plot(R,'b-', label="negative total time loss")
-    plt.legend()
-    plt.show()
+    # from random import randint
+    # env = TrafficControlEnv(net_fname = 'RussianJunction/RussianJunctionNoLights.net.xml', use_gui=True, output_path="sumo_outputs", step_length=0.1)
+    # env.reset()
+    # done = False
+    # for i in range(50):
+    #     obs, r, done = env.step()
+    # A = env.get_num_actions()
+    # if A == 0:
+    #     while not done:
+    #         obs, r, done = env.step()
+    # else:
+    #     while not done:
+    #         obs, r, done = env.step(randint(0,A-1))
