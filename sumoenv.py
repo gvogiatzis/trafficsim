@@ -16,10 +16,9 @@ A = env.get_num_actions()
 for t in range(1000):
     obs, r = env.step(randint(0,A-1))
 """
+import typer
 
 import os
-import sys
-from pathlib import Path
 from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
@@ -48,6 +47,8 @@ class TrafficControlEnv:
         self.episode_length = episode_length
         self._net_fname = net_fname
         self.vehicle_spawn_rate = vehicle_spawn_rate
+        self.actionCombinations = None
+        self.route_dict = None
         self._net = sumolib.net.readNet(self._net_fname, withPrograms=True)
         self._sumo = None
         self._vehcnt = 0
@@ -59,13 +60,16 @@ class TrafficControlEnv:
         # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
         sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log', '--step-length', str(step_length)])
 
+        if self.output_path is not None and not os.path.exists(self.output_path):
+            os.makedirs(self.output_path)
+
         if seed is not None:
             sumo_command.extend(['--seed',str(seed)])
         else:
             sumo_command.extend(['--random'])
-        traci.start(sumo_command,verbose=True, label="sim1")
+        traci.start(sumo_command,verbose=True, label="default")
 
-        self._sumo = traci.getConnection(label="sim1")
+        self._sumo = traci.getConnection(label="default")
         self._initialize_routes()
         self._sumo.simulation.saveState('state.sumo')
         
@@ -167,10 +171,10 @@ class TrafficControlEnv:
     
     def _saveVehicles(self, output_path, use_total_time=False):
         if use_total_time:
-            fname = f"{output_path}/{self.total_steps_run:009}.pk"
+            fname = f"{output_path}/{self.total_steps_run:009}.txt"
         else:
             step = self.episode_length-self.episode_step_countdown
-            fname = f"{output_path}/{self.current_episode:03}_{step:04d}.pk"
+            fname = f"{output_path}/{self.current_episode:03}_{step:04d}.txt"
         with open(fname, "w") as f:
             for v in self._sumo.vehicle.getIDList():
                 route_edges = self._sumo.vehicle.getRoute(v)
@@ -249,7 +253,7 @@ class TrafficControlEnv:
         return timeloss
     
     def _getObservation(self):
-        # lanes = self._sumo.lane.getIDList() # This includes :xyz internals
+        # lanes = self._sumo.lane.getIDList() # This inludes :xyz internals
         lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
         result = []
         for lane in lanes:
@@ -262,24 +266,22 @@ class TrafficControlEnv:
 
     def _initialize_routes(self):
         self.route_dict = defaultdict(dict)
-        routecnt = 0
         edges = self._net.getEdges()
         for e1 in edges:
             if e1.is_fringe():
                 for e2 in self._net.getReachable(e1):
                     if e2.is_fringe():
                         if e1!=e2 and e1.getID().replace('-','') != e2.getID().replace('-',''):
-                            routeID = f"route{routecnt:04d}:{e1.getID()}->{e2.getID()}"
+                            routeID = f"{e1.getID()}->{e2.getID()}"
                             self._sumo.route.add(routeID, [e1.getID(), e2.getID()])
                             self.route_dict[e1.getID()][e2.getID()] = routeID
-                            routecnt += 1
 
     def get_route_trajectories(self, save_file = None, plot_traj=False):
         route_traj = dict()
         for routeID in self._getAllRouteIDs():
             route=[]
             vehID = "veh"+routeID
-            self._sumo.vehicle.add(vehID, routeID)
+            self._sumo.vehicle.add(vehID, routeID, departLane="best", )
             self._sumo.simulationStep()
             while self._sumo.vehicle.getIDCount()>0:
                 route.append(self._sumo.vehicle.getPosition(vehID))
@@ -299,12 +301,49 @@ class TrafficControlEnv:
         return route_traj
 
 
+app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
+
+@app.command("allroutes")
+def save_route_trajectories(
+    net_fname = typer.Argument(default='sumo_data/RussianJunction/RussianJunctionNoLights.net.xml', help="The file name of the sumo network"), 
+    step_length=0.01, 
+    use_gui=True,
+    save_file="sumo_routes.pk",
+    plot_traj=True):
+    """
+    Save the trajectories of all available routes in the network.
+    """
+    env = TrafficControlEnv(net_fname = net_fname, step_length=step_length, use_gui=use_gui)
+    route_traj = env.get_route_trajectories(save_file=save_file, plot_traj=plot_traj)
+    env.close()
+
+@app.command("savetracks")
+def save_vehicle_tracks(net_fname = typer.Argument(default='sumo_data/RussianJunction/RussianJunctionNoLights.net.xml', help="The file name of the sumo network"), 
+        use_gui=True, 
+        output_path="sumo_tracks", 
+        step_length=0.1,
+        num_of_episodes=50):
+    """
+    Run the simulation (with random actions) for some episodes, while recording
+    the output
+    """
+    from random import randint
+    env = TrafficControlEnv(net_fname = net_fname, use_gui=use_gui, output_path=output_path, step_length=step_length)
+    env.reset()
+    done = False
+    for i in range(num_of_episodes):
+        _, _, done = env.step()
+    A = env.get_num_actions()
+    if A == 0:
+        while not done:
+            obs, r, done = env.step()
+    else:
+        while not done:
+            obs, r, done = env.step(randint(0,A-1))
+
+
 if __name__ == "__main__":
-    # env = TrafficControlEnv(net_fname = 'RussianJunction/RussianJunctionNoLights.net.xml', step_length=0.01, use_gui=True)
-
-    # route_traj = env.get_route_trajectories(save_file="sumo_routes.pts", plot_traj=True)
-    # env.close()
-
+    app()
 
 
     # R=[]
@@ -318,20 +357,5 @@ if __name__ == "__main__":
     # plt.legend()
     # plt.show()
 
-    env = TrafficControlEnv(net_fname = 'RussianJunction/RussianJunctionNoLights.net.xml', use_gui=False, output_path="sumo_outputs", step_length=0.1)
-    print(env._sumo.route.getIDList())
-    env.close()
 
-    # from random import randint
-    # env = TrafficControlEnv(net_fname = 'RussianJunction/RussianJunctionNoLights.net.xml', use_gui=True, output_path="sumo_outputs", step_length=0.1)
-    # env.reset()
-    # done = False
-    # for i in range(50):
-    #     obs, r, done = env.step()
-    # A = env.get_num_actions()
-    # if A == 0:
-    #     while not done:
-    #         obs, r, done = env.step()
-    # else:
-    #     while not done:
-    #         obs, r, done = env.step(randint(0,A-1))
+

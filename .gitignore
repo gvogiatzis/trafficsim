@@ -1,9 +1,7 @@
 .DS_Store
 sumo_data/
+output/
 __pycache__/
-*.pt
 state.sumo
-real_tracks/
 sumo_outputs/
-*.pk
-splines.py
+boxes/

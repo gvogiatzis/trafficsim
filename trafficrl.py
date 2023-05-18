@@ -1,8 +1,4 @@
-if __name__ != "__main__":
-    print("leaving")
-    exit(0)
 
-from utils.arguments import get_args
 import sys
 import os.path
 
@@ -10,110 +6,213 @@ if os.path.basename(sys.argv[0]) != "trafficrl.py":
     print("running from jupyter")
     sys.argv=["trafficrl.py", "train", "--net", "sumo_data/TwoJunction.net.xml"]
 
-args, parser = get_args()
-if len(sys.argv) == 1:
-    parser.print_usage()
-    exit(0)
-print(args.net)
+
+import typer
+from typing import Optional as Opt, List, Tuple
+from typing_extensions import Annotated as Ann
+from types import SimpleNamespace
 
 
-from collections import deque
-from random import random,sample
-from sumoenv import TrafficControlEnv
-from models import MLPnet, loadModel, saveModel
-import torch
-import torch.nn as nn
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-def updateQNet_batch(qnet, batch, optimizer, loss):
-    s,a,r,s_new,d = batch
-    
-    s=torch.stack(s)
-    s_new=torch.stack(s_new)
-    r=torch.tensor(r,device=device,dtype=torch.float)
-    d=torch.tensor(d,device=device,dtype=torch.bool)
-    a=torch.tensor(a,device=device,dtype=torch.int64)
-
-    with torch.no_grad():
-        qmax,_ = qnet(s_new).view(-1,num_actions).max(dim=1)
-        target = torch.where(d, r, r + gamma * qmax).view(-1,1)
-    L = loss(qnet(s).gather(1,a.view(-1,1)),target)
-    optimizer.zero_grad()
-    L.backward()
-    optimizer.step()
+app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
+state = SimpleNamespace() # state variable that will hold common set of options
 
 
-env = TrafficControlEnv(net_fname=args.net, vehicle_spawn_rate=args.spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=args.episode_length,use_gui=args.use_gui,sumo_timestep=args.sumo_timestep, seed=args.seed)
 
-device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
-rewards=[]
-num_episodes=args.num_episodes
-num_actions = env.get_num_actions()
-state_size = env.get_obs_dim()
+@app.callback()
+def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate at which new vehicles are being spawned")] = 0.05, 
 
-if args.cmd=="train":
-    gamma = args.gamma
-    epsilon = args.random_eps
-    batchsize=args.batch_size
-    replaybuffer = deque(maxlen=args.replay_buffer_size)
+         episode_length:Ann[Opt[int], typer.Option(help='the number of timesteps for each episode')] = 100,
+         
+         use_gui:Ann[Opt[bool], typer.Option(help="If set, performs the simulation using the sumo-gui command, i.e. with a graphical interface")] = False,
+         
+         sumo_timestep:Ann[Opt[int], typer.Option(help='the number of sumo timesteps between RL timesteps (i.e. when actions are taken)')] = 10,  
+         
+         seed:Ann[Opt[int], typer.Option(help='Random seed to be passed to sumo. This guarantees reproducible results. If not given, a different seed is chosen each time.')] = None,
+         
+         step_length:Ann[Opt[float], typer.Option(help='The length of a single timestep in the simulation in seconds. Set to <1.0 for finer granularity and >1.0 for speed (and less accuracy)')] = 1.0,  
+         
+         output_path:Ann[Opt[str], typer.Option(help='If set, determines the path into which the sumo tracks will be saved at each sumo timestep. If not set, tracks are not saved.')] = None,
+         
+         num_episodes:Ann[Opt[int], typer.Option(help='The number of episodes to train the agent')] = 50,
 
-if args.input is not None:
-    qnet = loadModel(args.input)
-else:
-    qnet = MLPnet(state_size, *args.network_layers, num_actions).to(device)
+         input:Ann[Opt[str], typer.Option(help='filename of a previously saved agent model which will be used as a starting point for further training. If not set, a new network is initialised according to the network-layers option.')] = None,
 
-if args.cmd=="train":
-    optim = torch.optim.RMSprop(qnet.parameters(), lr= args.lr)
+         network_layers:Ann[Opt[str], typer.Option(help="A string of integers separated by 'x' chars, denoting the size and number of hidden layers of the network architecture. E.g. '512x512x256' would create three hidden layers of dims 512,512 and 256. Ignored if 'input' option is set.")] = "1024x1024",
+         
+         plot_reward: Ann[Opt[bool], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] = True,
+
+         cuda: Ann[Opt[bool], typer.Option(help="If set (and if CUDA is available), will use GPU acceleration.")] = True
+         ):
+
+    state.__dict__.update(locals())
+
+
+@app.command("train")
+def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the sumo network to use")],
+          gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
+          = 0.99,
+ 
+          epsilon: Ann[Opt[float], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
+          = 0.1,
+
+          batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
+          = 128,
+
+          replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
+          = 5000,
+
+          lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
+          = 0.001,
+
+          save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every timestep.")] 
+          = False,
+          
+          output: Ann[Opt[str], typer.Option(help='filename to use for the trained agent model. If left blank, the filename of the network with the extension .pt will be used.')] 
+          = None):
+    """
+    Train a RL agent to perform traffic control on SUMO using the DQN algorithm."""
+    state.__dict__.update(locals())
+
+    print(state)
+    # <CODE> this snippet must be repeated in both train and test commands
+    # no other way to use the Typer framework for CLI
+    from collections import deque
+    from random import random,sample
+    from sumoenv import TrafficControlEnv
+    from models import MLPnet, loadModel, saveModel
+    import matplotlib.pyplot as plt
+    import torch
+    import torch.nn as nn
+    state.network_layers = [int(s) for s in state.network_layers.split("x")]
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path)
+    num_actions = env.get_num_actions()
+    state_size = env.get_obs_dim()
+    num_episodes = state.num_episodes
+    plot_reward = state.plot_reward
+    input = state.input    
+    device = torch.device("cuda" if state.cuda and torch.cuda.is_available() else "cpu")
+    if input is not None:
+        qnet = loadModel(input)
+    else:
+        qnet = MLPnet(state_size, *state.network_layers, num_actions).to(device)    
+    # </CODE>
+
+
+    def updateQNet_batch(qnet, batch, optimizer, loss):
+        s,a,r,s_new,d = batch
+        
+        s=torch.stack(s)
+        s_new=torch.stack(s_new)
+        r=torch.tensor(r,device=device,dtype=torch.float)
+        d=torch.tensor(d,device=device,dtype=torch.bool)
+        a=torch.tensor(a,device=device,dtype=torch.int64)
+
+        with torch.no_grad():
+            qmax,_ = qnet(s_new).view(-1,num_actions).max(dim=1)
+            target = torch.where(d, r, r + gamma * qmax).view(-1,1)
+        L = loss(qnet(s).gather(1,a.view(-1,1)),target)
+        optimizer.zero_grad()
+        L.backward()
+        optimizer.step()
+
+
+    replaybuffer = deque(maxlen=replay_buffer_size)
+
+    optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
     loss = nn.MSELoss()
+    rewards=[]
+    for e in range(state.num_episodes):
+        done = False
+        S = env.reset()
+        tot_reward=0
 
-for e in range(num_episodes):
-    done = False
-    S = env.reset()
-    tot_reward=0
-
-    # epsilon = max(0.1, epsilon*0.99)
-    while not done:
-        # Epsilon-greedy strategy
-        if args.cmd == "train":
+        # epsilon = max(0.1, epsilon*0.99)
+        while not done:
+            # Epsilon-greedy strategy
             A = env.sample_action() if random()<epsilon else qnet(S).argmax().item()
-        else:
-            A = qnet(S).argmax().item()
 
-        # Executing action, receiving reward and new state
-        S_new, R, done = env.step(A)
+            # Executing action, receiving reward and new state
+            S_new, R, done = env.step(A)
 
-        if args.cmd == "train":
             # adding the latest experience onto the replay buffer
             replaybuffer.append((S,A,R,S_new,done))
 
             S = S_new
-            if len(replaybuffer)>=batchsize:
-                batch = sample(replaybuffer, batchsize)
+            if len(replaybuffer)>=batch_size:
+                batch = sample(replaybuffer, batch_size)
                 batch = zip(*batch)    
                 updateQNet_batch(qnet, batch, optim, loss)
-        else:
+
+            tot_reward += R
+
+        rewards.append(tot_reward)
+        print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
+
+        if save_intermediate and output is not None:
+            saveModel(qnet, output)
+
+    if output is not None:
+        saveModel(qnet, output)
+    if plot_reward:
+        print('plotting reward')
+        plt.plot(rewards,'-')
+        plt.show()    
+    env.close()
+
+
+@app.command("test")
+def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sumo network to use")],):
+    """
+    Test a previously trained RL agent on a sumo network.
+    """
+    state.__dict__.update(locals())
+    print(state)
+    # <CODE> this snippet must be repeated in both train and test commands
+    # no other way to use the Typer framework for CLI
+    from collections import deque
+    from random import random,sample
+    from sumoenv import TrafficControlEnv
+    from models import MLPnet, loadModel, saveModel
+    import matplotlib.pyplot as plt
+    import torch
+    import torch.nn as nn
+    state.network_layers = [int(s) for s in state.network_layers.split("x")]
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path)
+    num_actions = env.get_num_actions()
+    state_size = env.get_obs_dim()
+    num_episodes = state.num_episodes
+    plot_reward = state.plot_reward
+    input = state.input    
+    device = torch.device("cuda" if state.cuda and torch.cuda.is_available() else "cpu")
+    if input is not None:
+        qnet = loadModel(input)
+    else:
+        qnet = MLPnet(state_size, *state.network_layers, num_actions).to(device)    
+    # </CODE>
+
+
+    rewards=[]
+    for e in range(num_episodes):
+        done = False
+        S = env.reset()
+        tot_reward=0
+        while not done:
+            A = qnet(S).argmax().item()
+            # Executing action, receiving reward and new state
+            S_new, R, done = env.step(A)
             S=S_new
+            tot_reward += R
+        rewards.append(tot_reward)
+        print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
+
+    env.close()
+    if plot_reward:
+        print('plotting reward')
+        plt.plot(rewards,'-')
+        plt.show()
 
 
-        tot_reward += R
 
-    rewards.append(tot_reward)
-    # print(f"\r{e+1}/{num_episodes} tot_reward={tot_reward}",end='')
-    print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
-
-    if args.cmd=="train" and args.save_intermediate:
-        saveModel(qnet, args.output)
-
-env.close()
-
-if args.cmd == "train":
-    saveModel(qnet, args.output)
-
-if args.plot_reward:
-    print('plotting reward')
-    # plt.plot(np.convolve(rewards,[0.01]*100,'valid'),'-')
-    plt.plot(rewards,'-')
-    plt.show()
+if __name__ == "__main__":
+    app()

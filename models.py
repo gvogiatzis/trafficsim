@@ -49,10 +49,3 @@ def loadModel(fname):
     model = cl(*cons_input)
     model.load_state_dict(weights)
     return model
-
-# net = MLPnet(10,20,30,40)
-# net2 = MLPnet2(20,30,40,50)
-# saveModel(net, 'test.pt')
-# saveModel(net2, 'test2.pt')
-# net_ = loadModel('test.pt')
-# net2_ = loadModel('test2.pt')
