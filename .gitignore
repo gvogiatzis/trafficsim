@@ -1,7 +1,6 @@
 .DS_Store
 sumo_data/
-output/
+output*
 __pycache__/
 state.sumo
-sumo_outputs/
 boxes/

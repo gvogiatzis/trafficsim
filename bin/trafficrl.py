@@ -1,6 +1,6 @@
-
 import sys
 import os.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 if os.path.basename(sys.argv[0]) != "trafficrl.py":
     print("running from jupyter")
@@ -26,13 +26,15 @@ def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate
          
          use_gui:Ann[Opt[bool], typer.Option(help="If set, performs the simulation using the sumo-gui command, i.e. with a graphical interface")] = False,
          
+         save_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
+         
          sumo_timestep:Ann[Opt[int], typer.Option(help='the number of sumo timesteps between RL timesteps (i.e. when actions are taken)')] = 10,  
          
          seed:Ann[Opt[int], typer.Option(help='Random seed to be passed to sumo. This guarantees reproducible results. If not given, a different seed is chosen each time.')] = None,
          
          step_length:Ann[Opt[float], typer.Option(help='The length of a single timestep in the simulation in seconds. Set to <1.0 for finer granularity and >1.0 for speed (and less accuracy)')] = 1.0,  
          
-         output_path:Ann[Opt[str], typer.Option(help='If set, determines the path into which the sumo tracks will be saved at each sumo timestep. If not set, tracks are not saved.')] = None,
+         output_path:Ann[Opt[str], typer.Option(help='The output path for saving all outputs')] = "output",
          
          num_episodes:Ann[Opt[int], typer.Option(help='The number of episodes to train the agent')] = 50,
 
@@ -63,15 +65,12 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
           = 5000,
 
           lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
-          = 0.001,
+          = 0.0001,
 
-          save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every timestep.")] 
-          = False,
-          
-          output: Ann[Opt[str], typer.Option(help='filename to use for the trained agent model. If left blank, the filename of the network with the extension .pt will be used.')] 
-          = None):
+          save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every epoch at {output_path}/model/model{epoch:04d}.pt")] 
+          = False):
     """
-    Train a RL agent to perform traffic control on SUMO using the DQN algorithm."""
+    Train a RL agent to perform traffic control on SUMO using the DQN algorithm. The final model is saved at {output_path}/model/model_final.pt """
     state.__dict__.update(locals())
 
     print(state)
@@ -80,12 +79,12 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     from collections import deque
     from random import random,sample
     from sumoenv import TrafficControlEnv
-    from models import MLPnet, loadModel, saveModel
+    from sumoenv.models import MLPnet, loadModel, saveModel
     import matplotlib.pyplot as plt
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
@@ -98,6 +97,9 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
         qnet = MLPnet(state_size, *state.network_layers, num_actions).to(device)    
     # </CODE>
 
+    if not os.path.exists(f"{state.output_path}/models/"):
+        os.makedirs(f"{state.output_path}/models/")
+    
 
     def updateQNet_batch(qnet, batch, optimizer, loss):
         s,a,r,s_new,d = batch
@@ -149,11 +151,10 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
         rewards.append(tot_reward)
         print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
 
-        if save_intermediate and output is not None:
-            saveModel(qnet, output)
+        if save_intermediate:
+            saveModel(qnet, f"{state.output_path}/models/model{e:04d}.pt")
 
-    if output is not None:
-        saveModel(qnet, output)
+    saveModel(qnet, f"{state.output_path}/models/model_final.pt")
     if plot_reward:
         print('plotting reward')
         plt.plot(rewards,'-')
@@ -173,12 +174,12 @@ def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sum
     from collections import deque
     from random import random,sample
     from sumoenv import TrafficControlEnv
-    from models import MLPnet, loadModel, saveModel
+    from sumoenv.models import MLPnet, loadModel, saveModel
     import matplotlib.pyplot as plt
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes

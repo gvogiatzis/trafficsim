@@ -4,8 +4,6 @@ from matplotlib.backend_bases import MouseButton
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import pickle
-import typer
-
 
 
 class RouteEditor:
@@ -307,20 +305,5 @@ class RouteEditor:
         xi = interp1d(t, x, kind='cubic')(ts)
         yi = interp1d(t, y, kind='cubic')(ts)
         return xi,yi
-
-
-
-
-app = typer.Typer()
-
-@app.command("startgui")
-def main(real_img_fname="sumo_data/RussianJunction/image.png", sumo_routes_fname="sumo_routes.pk", save_file_name="real_routes.pk", load_file_name="real_routes.pk"):
-    route_editor = RouteEditor(real_img_fname=real_img_fname, sumo_routes_fname=sumo_routes_fname, save_file_name=save_file_name, load_file_name=load_file_name)
-    route_editor.start_gui()
-
-if __name__ == "__main__":
-    app()
-
-   
 
 

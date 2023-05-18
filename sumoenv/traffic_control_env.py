@@ -35,12 +35,13 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path=None):
+    def __init__(self, net_fname = 'sumo_data/test/Test.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", save_tracks=False):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
         """
         random.seed(seed)
+        self.save_tracks = save_tracks
         self.total_steps_run=0
         self.current_episode = 0
         self.output_path = output_path
@@ -60,8 +61,9 @@ class TrafficControlEnv:
         # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
         sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log', '--step-length', str(step_length)])
 
-        if self.output_path is not None and not os.path.exists(self.output_path):
-            os.makedirs(self.output_path)
+        if not os.path.exists(f"{self.output_path}/sumo_tracks"):
+            os.makedirs(f"{self.output_path}/sumo_tracks")
+            print(f"created dir: {self.output_path}/sumo_tracks")
 
         if seed is not None:
             sumo_command.extend(['--seed',str(seed)])
@@ -161,8 +163,8 @@ class TrafficControlEnv:
             self._sumo.simulationStep()
             self.total_steps_run+=1
         
-            if self.output_path is not None:
-                self._saveVehicles(self.output_path, use_total_time=True)
+            if self.save_tracks:
+                self._saveVehicles(f"{self.output_path}/sumo_tracks", use_total_time=True)
 
         self.episode_step_countdown -= 1
 
@@ -344,18 +346,3 @@ def save_vehicle_tracks(net_fname = typer.Argument(default='sumo_data/RussianJun
 
 if __name__ == "__main__":
     app()
-
-
-    # R=[]
-    # env.reset()
-    # A = env.get_num_actions()
-    # for t in range(1000):
-    #     obs, r, done = env.step(randint(0,A-1))
-    #     R.append(r)
-    # env.close()
-    # plt.plot(R,'b-', label="negative total time loss")
-    # plt.legend()
-    # plt.show()
-
-
-
