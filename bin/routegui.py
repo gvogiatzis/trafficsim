@@ -8,7 +8,7 @@ app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_
 
 @app.command("startgui")
 def main(real_img_fname, sumo_routes_fname="sumo_routes.pk", save_file_name="real_routes.pk", load_file_name="real_routes.pk",
-        files_path=os.path.join("output","routes")):
+        files_path=os.path.join("output","converter")):
     if not os.path.exists(files_path):
         os.makedirs(files_path)
 

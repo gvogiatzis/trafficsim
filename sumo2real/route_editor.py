@@ -18,7 +18,9 @@ class RouteEditor:
         self.load_file_name = load_file_name
 
         with open(sumo_routes_fname,'rb') as f:
-            self.routes = pickle.load(f)
+            r = pickle.load(f)
+            self.routes = r['trajectories']
+            self.waypoints = r['waypoints']
 
         self.fig_real, self.ax_real = plt.subplots()
         self.fig_sumo, self.ax_sumo = plt.subplots()
@@ -30,16 +32,21 @@ class RouteEditor:
 
 
         self.sumo_route_lines=dict()
+        self.sumo_waypoint_lines=dict()
         for r,xy in self.routes.items():
-            X = [x for (x,y) in xy]
-            Y = [y for (x,y) in xy]
-            self.sumo_route_lines[r] = self.ax_sumo.plot(X,Y,'-', linewidth=1)[0]
+            self.sumo_route_lines[r] = self.ax_sumo.plot(*zip(*xy),'-', linewidth=1)[0]
+            if r in self.waypoints:
+                wps = self.waypoints[r]
+                self.sumo_waypoint_lines[r] = self.ax_sumo.plot(*zip(*wps),marker='s', markersize=5)[0]
+
         self.selected_route = list(self.sumo_route_lines.keys())[0]
 
         
         self.real_route_splines=dict()
         self.real_route_lines=dict()
+        self.real_route_waypt_lines=dict()
         self.real_route_verts=dict()
+        self.real_route_waypts=dict()
 
         if self.load_file_name is not None:
             self._load_routes(self.load_file_name)
@@ -50,6 +57,8 @@ class RouteEditor:
         self.fig_real.canvas.mpl_connect('button_press_event', self._on_button_press_real)
         self.fig_real.canvas.mpl_connect('button_release_event', self._on_button_release_real)
         self.fig_real.canvas.mpl_connect('motion_notify_event', self._on_mouse_move_real)
+
+        self._update_all()
 
     def start_gui(self):
         plt.show()
@@ -72,20 +81,20 @@ class RouteEditor:
         
         verts = self.real_route_verts[srID]
         verts[self._ind] = event.xdata, event.ydata
-        # line = self.real_route_lines[srID]
-        # line.set_data(zip(*verts))
-        # self.fig_real.canvas.draw_idle()
-        # self.fig_real.canvas.flush_events()
         self._update_selected()
+        # self._update_all()
 
 
     def _update_all(self):
-        for routeID, verts in self.real_route_verts.items():            
+        #updating lines and splines
+        for routeID, verts in self.real_route_verts.items(): 
             if routeID not in self.real_route_lines:
+                #the two line2Ds have not been created yet
                 self.real_route_lines[routeID] = Line2D([],[],linewidth=self.unselected_line_width,marker='o',markerfacecolor='w',markersize=self.unselected_line_width, ls='--', color=self.sumo_route_lines[routeID].get_color())
                 self.real_route_splines[routeID] = Line2D([],[],linewidth=self.unselected_line_width,ls='-',  color=self.sumo_route_lines[routeID].get_color())
                 self.ax_real.add_line(self.real_route_splines[routeID])  
                 self.ax_real.add_line(self.real_route_lines[routeID])        
+            #line2D objects now exist so just update them
             line = self.real_route_lines[routeID]
             spline = self.real_route_splines[routeID]
             line.set_data(zip(*verts))
@@ -94,6 +103,30 @@ class RouteEditor:
                 spline.set_data(x, y)
             else:   
                 spline.set_data([], [])
+
+        # deleting lines that no longer exist
+        for r in set.difference(set(self.real_route_lines.keys()),set(self.real_route_verts.keys())):
+            self.ax_real.lines.remove(self.real_route_lines[r])
+            del self.real_route_lines[r]
+        for r in set.difference(set(self.real_route_splines.keys()),set(self.real_route_verts.keys())):
+            self.ax_real.lines.remove(self.real_route_splines[r])
+            del self.real_route_splines[r]
+        for r in set.difference(set(self.real_route_waypt_lines.keys()),set(self.real_route_waypts.keys())):
+            self.ax_real.lines.remove(self.real_route_waypt_lines[r])
+            del self.real_route_waypt_lines[r]
+
+
+        #updating waypoints
+        for routeID, wps in self.real_route_waypts.items(): 
+            if routeID not in self.real_route_waypt_lines:
+                #the wp line2D has not been created yet
+                # self.real_route_waypt_lines[routeID] = Line2D([],[],linewidth=self.unselected_line_width,marker='s',markerfacecolor='r',markersize=10, ls='', color=self.sumo_route_lines[routeID].get_color())
+                self.real_route_waypt_lines[routeID] = Line2D([],[],linewidth=self.unselected_line_width,marker='s',markersize=10, ls='', color=self.sumo_route_lines[routeID].get_color())
+                self.ax_real.add_line(self.real_route_waypt_lines[routeID])     
+            #line2D object now exists so just update it
+            line = self.real_route_waypt_lines[routeID]
+            line.set_data(zip(*wps))
+
 
         self.sumo_route_lines[self.selected_route].set_linewidth(self.selected_line_width)
         if self.selected_route in self.real_route_lines:
@@ -133,18 +166,13 @@ class RouteEditor:
         if event.key in ["up", "down"]: # change selected route
             delta = 1 if event.key=="up" else -1
             self._modify_selected_route(delta, inreal=True)
-        if event.key == 'a': #add point
+        elif event.key == 'a': #add point
             srID = self.selected_route
             if srID not in self.real_route_verts:
                 self.real_route_verts[srID] = []
-                self.real_route_lines[srID] = Line2D([],[],linewidth=self.selected_line_width,marker='o',ls='--', markerfacecolor='w', markersize=self.selected_line_width, color=self.sumo_route_lines[srID].get_color())
-                
-                self.real_route_splines[srID] = Line2D([],[],linewidth=self.selected_line_width,ls='-', color=self.sumo_route_lines[srID].get_color())
-                self.ax_real.add_line(self.real_route_splines[srID])        
-                self.ax_real.add_line(self.real_route_lines[srID])        
             verts = self.real_route_verts[srID]
             verts.append((event.xdata, event.ydata))
-        if event.key == 'd': #delete point
+        elif event.key == 'd': #delete point
             if self.selected_route in self.real_route_verts:
                 verts = self.real_route_verts[self.selected_route]
                 t = self._get_ind_under_point(event)
@@ -162,10 +190,16 @@ class RouteEditor:
         elif event.key == 'backspace': #delete entire
             if self.selected_route in self.real_route_verts:
                 del self.real_route_verts[self.selected_route]
-                self.ax_real.lines.remove(self.real_route_lines[self.selected_route])
-                del self.real_route_lines[self.selected_route]
-                self.ax_real.lines.remove(self.real_route_splines[self.selected_route])                
-                del self.real_route_splines[self.selected_route]
+        elif event.key =='x':
+            if self.selected_route in self.real_route_verts:
+                srID = self.selected_route
+                if srID not in self.real_route_waypts:
+                    self.real_route_waypts[srID] = []
+                wps = self.real_route_waypts[srID]
+                wps.append((event.xdata, event.ydata))
+        elif event.key =='c':
+            if self.selected_route in self.real_route_waypts:
+                del self.real_route_waypts[self.selected_route]
                 
         self._update_all()
 
@@ -197,11 +231,15 @@ class RouteEditor:
 
     def _save_routes(self, filename):
         with open(filename, 'wb') as f:
-            pickle.dump(self.real_route_verts, f)
+            r = {'trajectories':self.real_route_verts, 'waypoints':self.real_route_waypts}
+            pickle.dump(r, f)
 
     def _load_routes(self, filename):
         with open(filename, 'rb') as f:
-            self.real_route_verts = pickle.load(f)
+            r = pickle.load(f)
+            self.real_route_verts = r['trajectories']
+            self.real_route_waypts = r['waypoints']
+
         self._update_all()
 
 

@@ -9,15 +9,18 @@ from tqdm import tqdm
 class BboxHistogram:
     def __init__(self, real_route_fname, bbox_data_path, background_img_fname):
         self.real_route_fname = real_route_fname
+
         with open(real_route_fname, 'rb') as f:
-            self.real_route_verts = pickle.load(f)
+            r = pickle.load(f)
+            self.real_route_verts = r['trajectories']
+            self.real_route_waypts = r['waypoints']
         self.route_id_pts=dict()
                 
         self.route_pts = np.vstack([self._interpolate(verts) for routeID, verts in self.real_route_verts.items()])
         self.nrnb = NearestNeighbors(n_neighbors=1).fit(self.route_pts)
         self.background_img = plt.imread(background_img_fname)
-        self.pixel_dist = 10
-        self.N_bins = 100
+        self.pixel_dist = 50
+        self.N_bins = 5
         self.hist=[]
 
         h,w,c=self.background_img.shape
@@ -52,6 +55,8 @@ class BboxHistogram:
 
     class _HistSampler:
         def __init__(self, data, nbins=25):
+            self.meanX = np.mean(data[:,0])
+            self.meanY = np.mean(data[:,1])
             self.hist, x_bins,y_bins = np.histogram2d(data[:,0],data[:,1],nbins)
             self.x_bins = (x_bins[:-1] + x_bins[1:])/2
             self.y_bins = (y_bins[:-1] + y_bins[1:])/2
@@ -63,17 +68,21 @@ class BboxHistogram:
 
         def sample(self, n=1):
             if self.cdf is None:
-                return None
+                return None            
             else:
-                values = np.random.rand(n)
-                value_bins = np.searchsorted(self.cdf, values)
-                x_idx, y_idx = np.unravel_index(value_bins,
-                                                (len(self.x_bins),
-                                                len(self.y_bins)))
-                random_from_cdf = np.column_stack((self.x_bins[x_idx],
-                                                self.y_bins[y_idx]))
-                new_x, new_y = random_from_cdf.T
-                return np.array(list(zip(new_x,new_y)))
+                return np.array(list(zip([self.meanX],[self.meanY])))
+                # i,j = np.unravel_index(self.hist.argmax(),self.hist.shape)
+                # return np.array(list(zip([self.x_bins[i]],[self.y_bins[j]])))
+
+                # values = np.random.rand(n)
+                # value_bins = np.searchsorted(self.cdf, values)
+                # x_idx, y_idx = np.unravel_index(value_bins,
+                #                                 (len(self.x_bins),
+                #                                 len(self.y_bins)))
+                # random_from_cdf = np.column_stack((self.x_bins[x_idx],
+                #                                 self.y_bins[y_idx]))
+                # new_x, new_y = random_from_cdf.T
+                # return np.array(list(zip(new_x,new_y)))
         
 
     

@@ -33,6 +33,8 @@ def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate
          seed:Ann[Opt[int], typer.Option(help='Random seed to be passed to sumo. This guarantees reproducible results. If not given, a different seed is chosen each time.')] = None,
          
          step_length:Ann[Opt[float], typer.Option(help='The length of a single timestep in the simulation in seconds. Set to <1.0 for finer granularity and >1.0 for speed (and less accuracy)')] = 1.0,  
+
+         car_length:Ann[Opt[float], typer.Option(help='The length of a car in sumo units. Increase to ensure cars stay away from each other when converted into the real world')] = 5.0,          
          
          output_path:Ann[Opt[str], typer.Option(help='The output path for saving all outputs')] = "output",
          
@@ -84,7 +86,7 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
@@ -179,7 +181,7 @@ def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sum
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
