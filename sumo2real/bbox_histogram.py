@@ -48,6 +48,25 @@ class BboxHistogram:
         self.route_pts = np.array(non_orphan_route_pts)
         self.nrnb = NearestNeighbors(n_neighbors=1).fit(self.route_pts)
 
+        # self.box_data = self.box_data[(self.box_data[:,0]==2) & (self.box_data[:,3]*self.box_data[:,4]>100) ,:]
+        self.box_data = self.box_data[(self.box_data[:,0]==2),:]
+        self.box_data_nrnb = \
+            NearestNeighbors(n_neighbors=10).fit(self.box_data[:,1:3]+0.5*self.box_data[:,3:5])
+
+    def find_nearest(self, x, y):
+        h,w,c=self.background_img.shape
+        d, i = self.box_data_nrnb.kneighbors([[x,y]])
+        # row = self.box_data[i.item(),:].copy()
+
+        row = np.median(self.box_data[i,:],axis=1).squeeze()
+
+        row[1] /= w
+        row[3] /= w
+        row[2] /= h
+        row[4] /= h
+        return row
+
+
     def sample(self, xy):
         d, i = self.nrnb.kneighbors(xy)
         xy_sample = self.hist[i.item()].sample()

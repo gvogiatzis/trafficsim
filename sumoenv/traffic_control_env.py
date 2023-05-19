@@ -34,7 +34,7 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", save_tracks=False, car_length=5):
+    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", save_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
@@ -57,13 +57,24 @@ class TrafficControlEnv:
         self.sumo_timestep = sumo_timestep
         self.use_gui = use_gui
         self.car_length = car_length
+        self.record_screenshots = record_screenshots
+        self.gui_config_file = gui_config_file
+
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
         # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
         sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log', '--step-length', str(step_length)])
 
+        if self.use_gui and self.gui_config_file is not None:
+            sumo_command.extend(['-g',self.gui_config_file])
+
+            
+
         if not os.path.exists(f"{self.output_path}/sumo_tracks"):
             os.makedirs(f"{self.output_path}/sumo_tracks")
             print(f"created dir: {self.output_path}/sumo_tracks")
+        if not os.path.exists(f"{self.output_path}/sumo_screenshots"):
+            os.makedirs(f"{self.output_path}/sumo_screenshots")
+            print(f"created dir: {self.output_path}/sumo_screenshots")
 
         if seed is not None:
             sumo_command.extend(['--seed',str(seed)])
@@ -160,11 +171,13 @@ class TrafficControlEnv:
             self._applyAction(action)
         for _ in range(self.sumo_timestep):            
             self._spawnVehicles()
+            if self.use_gui and self.record_screenshots:
+                self._sumo.gui.screenshot("View #0", f"{self.output_path}/sumo_screenshots/{self.total_steps_run:009}.png")
             self._sumo.simulationStep()
-            self.total_steps_run+=1
         
             if self.save_tracks:
                 self._saveVehicles(f"{self.output_path}/sumo_tracks", use_total_time=True)
+            self.total_steps_run+=1
 
         self.episode_step_countdown -= 1
 
@@ -213,6 +226,11 @@ class TrafficControlEnv:
         if len(actionCombinations)>0:
             for (tl, a) in actionCombinations[action]:
                 self._sumo.trafficlight.setPhase(tl,a)
+                # pass
+
+        # # <DEBUG>
+        # self.set_all_lights('r')
+        # # </DEBUG>
 
     def _spawnVehicles(self):
         for routeID in self._getAllRouteIDs():

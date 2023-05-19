@@ -46,8 +46,11 @@ def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate
          
          plot_reward: Ann[Opt[bool], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] = True,
 
-         cuda: Ann[Opt[bool], typer.Option(help="If set (and if CUDA is available), will use GPU acceleration.")] = True
-         ):
+         cuda: Ann[Opt[bool], typer.Option(help="If set (and if CUDA is available), will use GPU acceleration.")] = True,
+
+         gui_config_file: Ann[Opt[str], typer.Option(help="A filename of a viewsettings configuration file.")] = None,
+
+         record_screenshots: Ann[Opt[bool], typer.Option(help="If set, will record a screenshot per timestep in [OUTPUT_PATH]/sumo_screenshots.")] = True):
 
     state.__dict__.update(locals())
 
@@ -86,7 +89,7 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length,record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
@@ -181,7 +184,7 @@ def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sum
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length, record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
