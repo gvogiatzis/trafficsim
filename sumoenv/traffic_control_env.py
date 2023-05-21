@@ -198,7 +198,7 @@ class TrafficControlEnv:
         """
         Sets all lights in all traffic junction to the same state. The input state is one of the chars of 'rugGyYuoO'
         """
-        print(f"setting all lights to {state}")
+        # print(f"setting all lights to {state}")
         for tlID in self._sumo.trafficlight.getIDList():
             n = len(self._sumo.trafficlight.getControlledLanes(tlID))
             self._sumo.trafficlight.setRedYellowGreenState(tlID, state * n)

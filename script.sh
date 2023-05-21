@@ -1,8 +1,8 @@
 #!/bin/sh
 
-#python bin/trafficrl.py --save-tracks --num-episodes 1 --episode-length 50 --use-gui --step-length 0.1 --gui-config-file sumo_data/RussianJunction/view.xml  --record-screenshots --input output/models/model_final.pt  --car-length 50 test --net sumo_data/RussianJunction/RussianJunction.net.xml
+#python bin/trafficrl.py --save-tracks --num-episodes 5 --episode-length 50 --use-gui --step-length 0.1 --gui-config-file sumo_data/RussianJunction/view.xml  --record-screenshots --input output/models/model_final.pt  --car-length 50 test --net sumo_data/RussianJunction/RussianJunctionWide.net.xml
 
-python bin/sumotoreal.py fitbbox sumo_data/RussianJunction/image.png
+python bin/sumotoreal.py fitbbox --bbox-data-path "boxes/res*.txt"
 
 python bin/sumotoreal.py convertseq sumo_data/RussianJunction/image.png
 

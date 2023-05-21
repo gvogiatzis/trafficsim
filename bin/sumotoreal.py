@@ -2,7 +2,6 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from sumo2real import SumoToRealConverter, BboxHistogram
-import numpy as np
 import pickle
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -14,13 +13,10 @@ from typing import Tuple
 from typing_extensions import Annotated
 
 
-
-
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
 
 @app.command("fitbbox")
-def fitbbox(background_img_fname,
-            real_route_fname="real_routes.pk",
+def fitbbox(real_route_fname="real_routes.pk",
             bbox_data_path="boxes/*.txt", 
             save_fname="bboxhist.pk",
             output_path="output/converter"):
@@ -32,7 +28,7 @@ def fitbbox(background_img_fname,
     real_route_fname =    os.path.join(output_path,real_route_fname)
     save_fname =    os.path.join(output_path,save_fname)
 
-    bbox_hist = BboxHistogram(real_route_fname=real_route_fname,bbox_data_path=bbox_data_path, background_img_fname=background_img_fname)
+    bbox_hist = BboxHistogram(real_route_fname=real_route_fname,bbox_data_path=bbox_data_path)
     with open(save_fname, "wb") as f:
         pickle.dump(bbox_hist, f)
 
@@ -59,10 +55,6 @@ def convertseq(img_fname,
     sumo_routes_fname = os.path.join(output_path,sumo_routes_fname)
     bbox_hist_fname = os.path.join(output_path,bbox_hist_fname)
     
-    w,h = image_wh
-    if (w is None or h is None) and not draw_fig and not save_fig:
-        print("Unknown image width/height. Please enter the save_fig or draw_fig option or input the size with the image_wh option.")
-        raise typer.Abort()
     if save_fig and not os.path.exists(output_figs_path):
         os.makedirs(output_figs_path)
     if not os.path.exists(output_txt_path):
@@ -88,20 +80,11 @@ def convertseq(img_fname,
             for xy in r:
                 det = bbox_hist.find_nearest(*xy)
                 f.write(", ".join(str(n) for n in det)+"\n")
-                bbox_x = det[1]*w
-                bbox_y = det[2]*h
-                bbox_w = det[3]*w
-                bbox_h = det[4]*h
-                xs.append(bbox_x)
-                ys.append(bbox_y)
+                xs.append(det[1])
+                ys.append(det[2])
                 
-                # wh = bbox_hist.sample([xy])
-                # if wh is not None:
-                #     wh = wh.squeeze()
-                #     xy -= wh/2
-                #     f.write(f"2, {xy[0]/w}, {xy[1]/h}, {wh[0]/w}, {wh[1]/h}, 1.0\n")
                 if draw_fig or save_fig:
-                    ax.add_patch(Rectangle([bbox_x,bbox_y],bbox_w,bbox_h,fill=None, alpha=1))
+                    ax.add_patch(Rectangle([det[1],det[2]],det[3],det[4],fill=None, alpha=1))
             if len(r)==0:
                 line.set_data([],[])
                 line2.set_data([],[])

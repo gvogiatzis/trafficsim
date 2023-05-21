@@ -1,13 +1,8 @@
 from sklearn.neighbors import NearestNeighbors
 from  scipy.interpolate import interp1d
 import numpy as np
-import glob
-import time
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import pickle
 
-import typer
 
 
 class SumoToRealConverter:
