@@ -44,13 +44,15 @@ def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate
 
          network_layers:Ann[Opt[str], typer.Option(help="A string of integers separated by 'x' chars, denoting the size and number of hidden layers of the network architecture. E.g. '512x512x256' would create three hidden layers of dims 512,512 and 256. Ignored if 'input' option is set.")] = "1024x1024",
          
-         plot_reward: Ann[Opt[bool], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] = True,
+         plot_reward: Ann[Opt[bool], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] = False,
 
          cuda: Ann[Opt[bool], typer.Option(help="If set (and if CUDA is available), will use GPU acceleration.")] = True,
 
          gui_config_file: Ann[Opt[str], typer.Option(help="A filename of a viewsettings configuration file.")] = None,
 
-         record_screenshots: Ann[Opt[bool], typer.Option(help="If set, will record a screenshot per timestep in [OUTPUT_PATH]/sumo_screenshots.")] = True):
+         real_routes_file: Ann[Opt[str], typer.Option(help="The real routes file saved by routegui. If set, will restrict vehicle generation in sumo to the routes that appear in that file. Use if you want to avoid certain difficult routes in your junction.")] = None,
+
+         record_screenshots: Ann[Opt[bool], typer.Option(help="If set, will record a screenshot per timestep in [OUTPUT_PATH]/sumo_screenshots.")] = False):
 
     state.__dict__.update(locals())
 
@@ -89,7 +91,7 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length,record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length,record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file, real_routes_file = state.real_routes_file)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
@@ -163,7 +165,8 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     if plot_reward:
         print('plotting reward')
         plt.plot(rewards,'-')
-        plt.show()    
+        plt.show()  
+    print("closing env")
     env.close()
 
 
@@ -184,7 +187,7 @@ def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sum
     import torch
     import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length, record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length, record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file, real_routes_file = state.real_routes_file)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     num_episodes = state.num_episodes
@@ -212,11 +215,11 @@ def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sum
         rewards.append(tot_reward)
         print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
 
-    env.close()
     if plot_reward:
         print('plotting reward')
         plt.plot(rewards,'-')
         plt.show()
+    env.close()
 
 
 

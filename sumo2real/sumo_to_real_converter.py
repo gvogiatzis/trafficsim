@@ -40,18 +40,33 @@ class SumoToRealConverter:
             self.realt_to_xfun[routeID] = interp1d(t, xs, kind='cubic')
             self.realt_to_yfun[routeID] = interp1d(t, ys, kind='cubic')
 
-        for routeID, sumo_wps in self.sumo_waypoints.items():
-            if routeID in self.real_route_waypts:
+
+        for routeID in self.real_route_verts:
+            ts_sumo = [0.0]
+            ts_real = [0.0]
+            if routeID in self.real_route_waypts and self.sumo_waypoints:
                 real_wps = self.real_route_waypts[routeID]
-                ts_sumo = [0.0]
-                ts_real = [0.0]
+                sumo_wps = self.sumo_waypoints[routeID]
                 for i in range(min(len(real_wps), len(sumo_wps))):
                     ts_sumo.append(self._sumo_wpoint_tval(routeID,*sumo_wps[i]))
                     ts_real.append(self._real_wpoint_tval(routeID,*real_wps[i]))
-                ts_sumo.append(1.0)
-                ts_real.append(1.0)
-                print(f"{routeID}: {list(zip(ts_sumo,ts_real))}")
-                self.sumot_to_realt_fun[routeID] = interp1d(ts_sumo, ts_real, kind='linear')
+            ts_sumo.append(1.0)
+            ts_real.append(1.0)
+            print(f"{routeID}: {list(zip(ts_sumo,ts_real))}")
+            self.sumot_to_realt_fun[routeID] = interp1d(ts_sumo, ts_real, kind='linear')
+
+        # for routeID, sumo_wps in self.sumo_waypoints.items():
+        #     if routeID in self.real_route_waypts:
+        #         real_wps = self.real_route_waypts[routeID]
+        #         ts_sumo = [0.0]
+        #         ts_real = [0.0]
+        #         for i in range(min(len(real_wps), len(sumo_wps))):
+        #             ts_sumo.append(self._sumo_wpoint_tval(routeID,*sumo_wps[i]))
+        #             ts_real.append(self._real_wpoint_tval(routeID,*real_wps[i]))
+        #         ts_sumo.append(1.0)
+        #         ts_real.append(1.0)
+        #         print(f"{routeID}: {list(zip(ts_sumo,ts_real))}")
+        #         self.sumot_to_realt_fun[routeID] = interp1d(ts_sumo, ts_real, kind='linear')
 
     def _real_wpoint_tval(self, routeID, wp_x,wp_y):
         ts = np.linspace(0,1,100)

@@ -79,12 +79,12 @@ def convertseq(img_fname,
             xs,ys=[],[]
             for xy in r:
                 det = bbox_hist.find_nearest(*xy)
-                f.write(", ".join(str(n) for n in det)+"\n")
+                f.write(" ".join(str(n) for n in det)+"\n")
                 xs.append(det[1])
                 ys.append(det[2])
                 
                 if draw_fig or save_fig:
-                    ax.add_patch(Rectangle([det[1],det[2]],det[3],det[4],fill=None, alpha=1))
+                    ax.add_patch(Rectangle([det[1],det[2]],det[3],det[4],fill=None, alpha=1, color='y'))
             if len(r)==0:
                 line.set_data([],[])
                 line2.set_data([],[])

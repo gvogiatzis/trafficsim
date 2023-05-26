@@ -43,12 +43,14 @@ app = typer.Typer(no_args_is_help=True, context_settings={"help_option_names": [
 
 @app.command()
 def find(file_list: Ann[List[str], typer.Argument(help="One or more csv files to be rescaled")],
-         multiply: Ann[List[str], typer.Option("--multiply", "-m", help="A list of 'int:float' pairs that defines the collumn index and scale factor that it will be multiplied by. E.g. 2:123.0 means row[2]*=123.0")] = [],
-         divide: Ann[List[str], typer.Option("--divide", "-d", help="A list of 'int:float' pairs that defines the collumn index and scale factor that it will be divided by. E.g. 2:123.0 means row[2]/=123.0")] = []):
-    for fpath in tqdm.tqdm(file_list):
+         multiply: Ann[Opt[List[str]], typer.Option("--multiply", "-m", help="A list of 'int:float' pairs that defines the collumn index and scale factor that it will be multiplied by. E.g. 2:123.0 means row[2]*=123.0")] = [],
+         divide: Ann[Opt[List[str]], typer.Option("--divide", "-d", help="A list of 'int:float' pairs that defines the collumn index and scale factor that it will be divided by. E.g. 2:123.0 means row[2]/=123.0")] = [],
+         output_format: Ann[Opt[str], typer.Option(help="a sprintf-style string  format for the output sequence filenames. E.g. 'frame%04d.txt' results in frame0000.txt, frame0001.txt ... etc. If not set, default is prefixing the filenames with 'res_'")] = None):
+    for ind,fpath in enumerate(tqdm.tqdm(file_list)):
         with open(fpath, "r") as f1:
             path, fname = os.path.split(fpath)
-            with open(os.path.join(path, "res_"+fname), "w") as f2:
+            output_fname = output_format % ind if output_format is not None else "res_"+fname
+            with open(os.path.join(path, output_fname), "w") as f2:
                 for line in f1.readlines():
                     ws = line.split(" ")
                     for i,s in list(map(int, q.split(":")) for q in multiply):

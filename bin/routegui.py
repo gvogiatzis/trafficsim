@@ -12,15 +12,19 @@ def main(real_img_fname, sumo_routes_fname="sumo_routes.pk", save_file_name="rea
     if not os.path.exists(files_path):
         os.makedirs(files_path)
 
+
+
     sumo_routes_fname = os.path.join(files_path,sumo_routes_fname)
     save_file_name =    os.path.join(files_path,save_file_name)
     load_file_name =    os.path.join(files_path,load_file_name)
     if not os.path.exists(load_file_name):
         load_file_name = None
 
-    route_editor = RouteEditor(real_img_fname=real_img_fname, sumo_routes_fname=sumo_routes_fname, save_file_name=save_file_name, load_file_name=load_file_name)
-    route_editor.start_gui()
 
+    route_editor = RouteEditor(real_img_fname=real_img_fname, sumo_routes_fname=sumo_routes_fname, save_file_name=save_file_name, load_file_name=load_file_name)
+    
+    route_editor.start_gui()
+    
 if __name__ == "__main__":
     app()
 

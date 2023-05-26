@@ -34,7 +34,7 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", save_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None):
+    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", save_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
@@ -59,6 +59,7 @@ class TrafficControlEnv:
         self.car_length = car_length
         self.record_screenshots = record_screenshots
         self.gui_config_file = gui_config_file
+        self.real_routes_file = real_routes_file
 
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
         # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
@@ -67,7 +68,12 @@ class TrafficControlEnv:
         if self.use_gui and self.gui_config_file is not None:
             sumo_command.extend(['-g',self.gui_config_file])
 
-            
+        if self.real_routes_file is not None:
+            with open(self.real_routes_file, 'rb') as f:
+                # self.real_routes = list(pickle.load(f)["trajectories"].keys())
+                self.real_routes = pickle.load(f)["active_routes"]
+        else:
+            self.real_routes = None
 
         if not os.path.exists(f"{self.output_path}/sumo_tracks"):
             os.makedirs(f"{self.output_path}/sumo_tracks")
@@ -80,6 +86,7 @@ class TrafficControlEnv:
             sumo_command.extend(['--seed',str(seed)])
         else:
             sumo_command.extend(['--random'])
+        
         traci.start(sumo_command,verbose=True, label="default")
 
         self._sumo = traci.getConnection(label="default")
@@ -233,11 +240,16 @@ class TrafficControlEnv:
         # # </DEBUG>
 
     def _spawnVehicles(self):
-        for routeID in self._getAllRouteIDs():
+        if self.real_routes is not None:
+            all_routeIDs = self.real_routes 
+        else:
+            all_routeIDs = self._getAllRouteIDs()
+        for routeID in all_routeIDs:
             if random.random() < self.vehicle_spawn_rate:
                 vehID = f"veh{self._vehcnt:08d}"
                 self._sumo.vehicle.add(vehID, routeID)
                 self._sumo.vehicle.setLength(vehID, self.car_length)
+                self._sumo.vehicle.setWidth(vehID, self.car_length/3.5)
                 self._vehcnt +=1
 
     def _get_TLS_demand_breakdown(self, tls_id):
@@ -307,6 +319,8 @@ class TrafficControlEnv:
     def get_route_trajectories(self, save_file = None, plot_traj=False):        
         route_traj = dict()
         route_waypoints=dict()
+        print("_getAllRouteIDs")
+        print(self._getAllRouteIDs())
         for routeID in self._getAllRouteIDs():
             route=[]
             waypoints=[]
@@ -341,53 +355,6 @@ class TrafficControlEnv:
                     Y = [y for (x,y) in wps]
                     plt.plot(X,Y,marker='o',markersize=5)
             plt.show()
-
+        print(f"found {len(route_traj)} routes")
         return route_traj
-
-
-
-# import typer
-
-# app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
-
-# @app.command("allroutes")
-# def save_route_trajectories(
-#     net_fname = typer.Argument(default='sumo_data/RussianJunction/RussianJunctionNoLights.net.xml', help="The file name of the sumo network"), 
-#     step_length=0.01, 
-#     use_gui=True,
-#     save_file="sumo_routes.pk",
-#     plot_traj=True):
-#     """
-#     Save the trajectories of all available routes in the network.
-#     """
-#     env = TrafficControlEnv(net_fname = net_fname, step_length=step_length, use_gui=use_gui)
-#     route_traj = env.get_route_trajectories(save_file=save_file, plot_traj=plot_traj)
-#     env.close()
-
-# @app.command("savetracks")
-# def save_vehicle_tracks(net_fname = typer.Argument(default='sumo_data/RussianJunction/RussianJunctionNoLights.net.xml', help="The file name of the sumo network"), 
-#         use_gui=True, 
-#         output_path="sumo_tracks", 
-#         step_length=0.1,
-#         num_of_episodes=50):
-#     """
-#     Run the simulation (with random actions) for some episodes, while recording
-#     the output
-#     """
-#     from random import randint
-#     env = TrafficControlEnv(net_fname = net_fname, use_gui=use_gui, output_path=output_path, step_length=step_length)
-#     env.reset()
-#     done = False
-#     for i in range(num_of_episodes):
-#         _, _, done = env.step()
-#     A = env.get_num_actions()
-#     if A == 0:
-#         while not done:
-#             obs, r, done = env.step()
-#     else:
-#         while not done:
-#             obs, r, done = env.step(randint(0,A-1))
-
-
-# if __name__ == "__main__":
-#     app()
+    

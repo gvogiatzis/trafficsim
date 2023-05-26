@@ -21,6 +21,7 @@ class RouteEditor:
             r = pickle.load(f)
             self.routes = r['trajectories']
             self.waypoints = r['waypoints']
+            
 
         self.fig_real, self.ax_real = plt.subplots()
         self.fig_sumo, self.ax_sumo = plt.subplots()
@@ -41,7 +42,6 @@ class RouteEditor:
 
         self.selected_route = list(self.sumo_route_lines.keys())[0]
 
-        
         self.real_route_splines=dict()
         self.real_route_lines=dict()
         self.real_route_waypt_lines=dict()
@@ -62,6 +62,7 @@ class RouteEditor:
 
     def start_gui(self):
         plt.show()
+
 
     def stop_gui(self):
         plt.close()
@@ -231,7 +232,10 @@ class RouteEditor:
 
     def _save_routes(self, filename):
         with open(filename, 'wb') as f:
-            r = {'trajectories':self.real_route_verts, 'waypoints':self.real_route_waypts}
+            a = self.real_route_verts.keys()
+            b = self.sumo_route_lines.keys()
+            active_routes = list(set.intersection(set(a),set(b)))
+            r = {'trajectories':self.real_route_verts, 'waypoints':self.real_route_waypts, 'active_routes':active_routes}
             pickle.dump(r, f)
 
     def _load_routes(self, filename):
