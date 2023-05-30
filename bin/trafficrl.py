@@ -179,13 +179,10 @@ def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sum
     print(state)
     # <CODE> this snippet must be repeated in both train and test commands
     # no other way to use the Typer framework for CLI
-    from collections import deque
-    from random import random,sample
     from sumoenv import TrafficControlEnv
-    from sumoenv.models import MLPnet, loadModel, saveModel
+    from sumoenv.models import MLPnet, loadModel
     import matplotlib.pyplot as plt
     import torch
-    import torch.nn as nn
     state.network_layers = [int(s) for s in state.network_layers.split("x")]
     env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length, record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file, real_routes_file = state.real_routes_file)
     num_actions = env.get_num_actions()
