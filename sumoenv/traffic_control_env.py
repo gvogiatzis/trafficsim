@@ -34,13 +34,13 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", save_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None):
+    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", record_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
         """
         random.seed(seed)
-        self.save_tracks = save_tracks
+        self.record_tracks = record_tracks
         self.total_steps_run=0
         self.current_episode = 0
         self.output_path = output_path
@@ -75,10 +75,10 @@ class TrafficControlEnv:
         else:
             self.real_routes = None
 
-        if not os.path.exists(f"{self.output_path}/sumo_tracks"):
+        if self.record_tracks and not os.path.exists(f"{self.output_path}/sumo_tracks"):
             os.makedirs(f"{self.output_path}/sumo_tracks")
             print(f"created dir: {self.output_path}/sumo_tracks")
-        if not os.path.exists(f"{self.output_path}/sumo_screenshots"):
+        if self.record_screenshots and not os.path.exists(f"{self.output_path}/sumo_screenshots"):
             os.makedirs(f"{self.output_path}/sumo_screenshots")
             print(f"created dir: {self.output_path}/sumo_screenshots")
 
@@ -182,7 +182,7 @@ class TrafficControlEnv:
                 self._sumo.gui.screenshot("View #0", f"{self.output_path}/sumo_screenshots/{self.total_steps_run:009}.png")
             self._sumo.simulationStep()
         
-            if self.save_tracks:
+            if self.record_tracks:
                 self._saveVehicles(f"{self.output_path}/sumo_tracks", use_total_time=True)
             self.total_steps_run+=1
 

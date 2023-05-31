@@ -3,4 +3,4 @@ sumo_data/
 output*
 __pycache__/
 state.sumo
-boxes/
+script*

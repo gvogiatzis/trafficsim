@@ -19,14 +19,13 @@ state = SimpleNamespace() # state variable that will hold common set of options
 
 
 
-@app.callback()
-def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate at which new vehicles are being spawned")] = 0.05, 
+@app.command()
+def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo network to use")],
+         vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate at which new vehicles are being spawned")] = 0.05, 
 
          episode_length:Ann[Opt[int], typer.Option(help='the number of timesteps for each episode')] = 100,
          
          use_gui:Ann[Opt[bool], typer.Option(help="If set, performs the simulation using the sumo-gui command, i.e. with a graphical interface")] = False,
-         
-         save_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
          
          sumo_timestep:Ann[Opt[int], typer.Option(help='the number of sumo timesteps between RL timesteps (i.e. when actions are taken)')] = 10,  
          
@@ -52,37 +51,32 @@ def main(vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate
 
          real_routes_file: Ann[Opt[str], typer.Option(help="The real routes file saved by routegui. If set, will restrict vehicle generation in sumo to the routes that appear in that file. Use if you want to avoid certain difficult routes in your junction.")] = None,
 
-         record_screenshots: Ann[Opt[bool], typer.Option(help="If set, will record a screenshot per timestep in [OUTPUT_PATH]/sumo_screenshots.")] = False):
+         record_screenshots: Ann[Opt[bool], typer.Option(help="If set, will record a screenshot per timestep in [OUTPUT_PATH]/sumo_screenshots.")] = False,
 
-    state.__dict__.update(locals())
+         record_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
 
-
-@app.command("train")
-def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the sumo network to use")],
-          gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
+         gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
           = 0.99,
  
-          epsilon: Ann[Opt[float], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
+         epsilon: Ann[Opt[float], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
           = 0.1,
 
-          batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
+         batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
           = 128,
 
-          replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
+         replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
           = 5000,
 
-          lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
+         lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
           = 0.0001,
 
-          save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every epoch at {output_path}/model/model{epoch:04d}.pt")] 
-          = False):
-    """
-    Train a RL agent to perform traffic control on SUMO using the DQN algorithm. The final model is saved at {output_path}/model/model_final.pt """
-    state.__dict__.update(locals())
+         save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every epoch at {output_path}/model/model{epoch:04d}.pt")] 
+          = False,
 
-    print(state)
-    # <CODE> this snippet must be repeated in both train and test commands
-    # no other way to use the Typer framework for CLI
+         test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False):
+
+    print(locals())
+
     from collections import deque
     from random import random,sample
     from sumoenv import TrafficControlEnv
@@ -90,78 +84,90 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     import matplotlib.pyplot as plt
     import torch
     import torch.nn as nn
-    state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length,record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file, real_routes_file = state.real_routes_file)
+
+    network_layers = [int(s) for s in network_layers.split("x")]
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file)
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
-    num_episodes = state.num_episodes
-    plot_reward = state.plot_reward
-    input = state.input    
-    device = torch.device("cuda" if state.cuda and torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if cuda and torch.cuda.is_available() else "cpu")
     if input is not None:
         qnet = loadModel(input)
     else:
-        qnet = MLPnet(state_size, *state.network_layers, num_actions).to(device)    
-    # </CODE>
-
-    if not os.path.exists(f"{state.output_path}/models/"):
-        os.makedirs(f"{state.output_path}/models/")
+        qnet = MLPnet(state_size, *network_layers, num_actions).to(device)    
+    state.__dict__.update(locals())
     
+    if not test: # we do training
+        if not os.path.exists(f"{output_path}/models/"):
+            os.makedirs(f"{output_path}/models/")
 
-    def updateQNet_batch(qnet, batch, optimizer, loss):
-        s,a,r,s_new,d = batch
-        
-        s=torch.stack(s)
-        s_new=torch.stack(s_new)
-        r=torch.tensor(r,device=device,dtype=torch.float)
-        d=torch.tensor(d,device=device,dtype=torch.bool)
-        a=torch.tensor(a,device=device,dtype=torch.int64)
+        def updateQNet_batch(qnet, batch, optimizer, loss):
+            s,a,r,s_new,d = batch
+            
+            s=torch.stack(s)
+            s_new=torch.stack(s_new)
+            r=torch.tensor(r,device=device,dtype=torch.float)
+            d=torch.tensor(d,device=device,dtype=torch.bool)
+            a=torch.tensor(a,device=device,dtype=torch.int64)
 
-        with torch.no_grad():
-            qmax,_ = qnet(s_new).view(-1,num_actions).max(dim=1)
-            target = torch.where(d, r, r + gamma * qmax).view(-1,1)
-        L = loss(qnet(s).gather(1,a.view(-1,1)),target)
-        optimizer.zero_grad()
-        L.backward()
-        optimizer.step()
+            with torch.no_grad():
+                qmax,_ = qnet(s_new).view(-1,num_actions).max(dim=1)
+                target = torch.where(d, r, r + gamma * qmax).view(-1,1)
+            L = loss(qnet(s).gather(1,a.view(-1,1)),target)
+            optimizer.zero_grad()
+            L.backward()
+            optimizer.step()
+
+        replaybuffer = deque(maxlen=replay_buffer_size)
+        optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
+        loss = nn.MSELoss()
+        rewards=[]
+        for e in range(num_episodes):
+            done = False
+            S = env.reset()
+            tot_reward=0
+
+            # epsilon = max(0.1, epsilon*0.99)
+            while not done:
+                # Epsilon-greedy strategy
+                A = env.sample_action() if random()<epsilon else qnet(S).argmax().item()
+
+                # Executing action, receiving reward and new state
+                S_new, R, done = env.step(A)
+
+                # adding the latest experience onto the replay buffer
+                replaybuffer.append((S,A,R,S_new,done))
+
+                S = S_new
+                if len(replaybuffer)>=batch_size:
+                    batch = sample(replaybuffer, batch_size)
+                    batch = zip(*batch)    
+                    updateQNet_batch(qnet, batch, optim, loss)
+
+                tot_reward += R
+
+            rewards.append(tot_reward)
+            print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
+
+            if save_intermediate:
+                saveModel(qnet, f"{output_path}/models/model{e:04d}.pt")
+
+        saveModel(qnet, f"{output_path}/models/model_final.pt")
+    else: # we do simple testing of an existing model
+        rewards=[]
+        for e in range(num_episodes):
+            done = False
+            S = env.reset()
+            tot_reward=0
+            while not done:
+                A = qnet(S).argmax().item()
+                # Executing action, receiving reward and new state
+                S_new, R, done = env.step(A)
+                S=S_new
+                tot_reward += R
+            rewards.append(tot_reward)
+            print(f"Testing: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
 
 
-    replaybuffer = deque(maxlen=replay_buffer_size)
-
-    optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
-    loss = nn.MSELoss()
-    rewards=[]
-    for e in range(state.num_episodes):
-        done = False
-        S = env.reset()
-        tot_reward=0
-
-        # epsilon = max(0.1, epsilon*0.99)
-        while not done:
-            # Epsilon-greedy strategy
-            A = env.sample_action() if random()<epsilon else qnet(S).argmax().item()
-
-            # Executing action, receiving reward and new state
-            S_new, R, done = env.step(A)
-
-            # adding the latest experience onto the replay buffer
-            replaybuffer.append((S,A,R,S_new,done))
-
-            S = S_new
-            if len(replaybuffer)>=batch_size:
-                batch = sample(replaybuffer, batch_size)
-                batch = zip(*batch)    
-                updateQNet_batch(qnet, batch, optim, loss)
-
-            tot_reward += R
-
-        rewards.append(tot_reward)
-        print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
-
-        if save_intermediate:
-            saveModel(qnet, f"{state.output_path}/models/model{e:04d}.pt")
-
-    saveModel(qnet, f"{state.output_path}/models/model_final.pt")
     if plot_reward:
         print('plotting reward')
         plt.plot(rewards,'-')
@@ -169,54 +175,6 @@ def train(net_fname: Ann[str, typer.Option("--net", help="the filename of the su
     print("closing env")
     env.close()
 
-
-@app.command("test")
-def test(net_fname: Ann[str, typer.Option("--net", help="the filename of the sumo network to use")],):
-    """
-    Test a previously trained RL agent on a sumo network.
-    """
-    state.__dict__.update(locals())
-    print(state)
-    # <CODE> this snippet must be repeated in both train and test commands
-    # no other way to use the Typer framework for CLI
-    from sumoenv import TrafficControlEnv
-    from sumoenv.models import MLPnet, loadModel
-    import matplotlib.pyplot as plt
-    import torch
-    state.network_layers = [int(s) for s in state.network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=state.vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=state.episode_length,use_gui=state.use_gui,sumo_timestep=state.sumo_timestep, seed=state.seed, step_length=state.step_length, output_path=state.output_path,save_tracks=state.save_tracks,car_length=state.car_length, record_screenshots = state.record_screenshots, gui_config_file = state.gui_config_file, real_routes_file = state.real_routes_file)
-    num_actions = env.get_num_actions()
-    state_size = env.get_obs_dim()
-    num_episodes = state.num_episodes
-    plot_reward = state.plot_reward
-    input = state.input    
-    device = torch.device("cuda" if state.cuda and torch.cuda.is_available() else "cpu")
-    if input is not None:
-        qnet = loadModel(input)
-    else:
-        qnet = MLPnet(state_size, *state.network_layers, num_actions).to(device)    
-    # </CODE>
-
-
-    rewards=[]
-    for e in range(num_episodes):
-        done = False
-        S = env.reset()
-        tot_reward=0
-        while not done:
-            A = qnet(S).argmax().item()
-            # Executing action, receiving reward and new state
-            S_new, R, done = env.step(A)
-            S=S_new
-            tot_reward += R
-        rewards.append(tot_reward)
-        print(f"{e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
-
-    if plot_reward:
-        print('plotting reward')
-        plt.plot(rewards,'-')
-        plt.show()
-    env.close()
 
 
 
