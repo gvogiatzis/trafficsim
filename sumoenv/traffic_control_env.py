@@ -92,11 +92,15 @@ class TrafficControlEnv:
         self._sumo = traci.getConnection(label="default")
         self._initialize_routes()
         self._sumo.simulation.saveState('state.sumo')
-        
+    
+    def get_num_trafficlights(self):
+        """ Returns the number of traffic lights in the network"""
+        tls=self._net.getTrafficLights()
+        return len(tls) 
+
     def get_num_actions(self):
         """ Returns the number of possible actions corresponding to all traffic
         light combinations """
-
         tls=self._net.getTrafficLights() 
         if len(tls)>0:     
             dim = 1
