@@ -1,6 +1,6 @@
-# python bin/trafficrl.py --seed 1234  --use-gui --gui-config-file sumo_data/RJ2/view.xml  --car-length 50 --vehicle-spawn-rate 0.1 --real-routes-file output/converter/real_routes.pk train --net sumo_data/RJ2/RJ2.net.xml
+# python bin/trafficrl.py --seed 1234  --use-gui --gui-config-file sumo_data/RJ2/view.xml  --car-length 50 --vehicle-spawn-rate 0.1 --real-routes-file output/converter/real_routes.pk sumo_data/RJ2/RJ2.net.xml
 
-python bin/trafficrl.py --seed 1235 --save-tracks --vehicle-spawn-rate 0.1 --num-episodes 5 --episode-length 50 --use-gui --step-length 0.1 --gui-config-file sumo_data/RJ2/view.xml  --record-screenshots --input output/models/model_final.pt  --car-length 80 --real-routes-file output/converter/real_routes.pk test --net sumo_data/RJ2/RJ2.net.xml
+python bin/trafficrl.py --seed 1235 --record-tracks --vehicle-spawn-rate 0.1 --num-episodes 5 --episode-length 50 --use-gui --step-length 0.1 --gui-config-file sumo_data/RJ2/view.xml  --record-screenshots --input output/models/model_final.pt  --car-length 80 --real-routes-file output/converter/real_routes.pk --test  sumo_data/RJ2/RJ2.net.xml
 
 
 python bin/changescale.py -m 1:1920 -m 3:1920 -m 2:1080 -m 4:1080 --output-format "rescaled_frame%05d.txt" sumo_data/RJ2/boxes/frame*.txt
