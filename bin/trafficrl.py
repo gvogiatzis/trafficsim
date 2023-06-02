@@ -70,12 +70,17 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
           = 0.0001,
 
+         model_fname: Ann[Opt[str], typer.Option(help="If set, gives the filename to use when saving the trained model. If not set, the name of the network is used with a .pt extension")] = None,
+
          save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every epoch at {output_path}/model/model{epoch:04d}.pt")] 
           = False,
 
          test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False):
 
-    print(locals())
+    # print(locals())
+
+    if model_fname is None:
+        model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
 
     from collections import deque
     from random import random,sample
@@ -118,7 +123,8 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
             optimizer.step()
 
         replaybuffer = deque(maxlen=replay_buffer_size)
-        optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
+        # optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
+        optim = torch.optim.SGD(qnet.parameters(), lr= lr)
         loss = nn.MSELoss()
         rewards=[]
         for e in range(num_episodes):
@@ -149,9 +155,10 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
             print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
 
             if save_intermediate:
-                saveModel(qnet, f"{output_path}/models/model{e:04d}.pt")
+                save_fname = os.path.join(output_path, 'models', f"{os.path.splitext(model_fname)[0]}{e:04d}.pt")
+                saveModel(qnet, save_fname)
 
-        saveModel(qnet, f"{output_path}/models/model_final.pt")
+        saveModel(qnet, os.path.join(output_path, 'models', model_fname))
     else: # we do simple testing of an existing model
         rewards=[]
         for e in range(num_episodes):
