@@ -34,7 +34,7 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", record_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None):
+    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", record_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None, greedy_action=False,random_action=False):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
@@ -60,6 +60,8 @@ class TrafficControlEnv:
         self.record_screenshots = record_screenshots
         self.gui_config_file = gui_config_file
         self.real_routes_file = real_routes_file
+        self.greedy_action = greedy_action
+        self.random_action=random_action
 
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
         # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
@@ -180,6 +182,15 @@ class TrafficControlEnv:
         """
         if action is not None:
             self._applyAction(action)
+        if self.random_action:
+            a = self.sample_action()
+            self._applyAction(a)
+        if self.greedy_action:
+            for tl in self._sumo.trafficlight.getIDList():
+                demand = self._get_TLS_demand_breakdown(tl)
+                a = np.argmax(demand)
+                self._sumo.trafficlight.setPhase(tl,a)
+
         for _ in range(self.sumo_timestep):            
             self._spawnVehicles()
             if self.use_gui and self.record_screenshots:
@@ -230,18 +241,6 @@ class TrafficControlEnv:
                 routeID = self.route_dict[e0][e1]
                 f.write(f"{routeID}, {x}, {y}\n")
 
-    def _applyAction(self, action: int):
-        """ Applies a traffic control action to the traffic lights
-        """
-        actionCombinations = self._getActionCombinations()
-        if len(actionCombinations)>0:
-            for (tl, a) in actionCombinations[action]:
-                self._sumo.trafficlight.setPhase(tl,a)
-                # pass
-
-        # # <DEBUG>
-        # self.set_all_lights('r')
-        # # </DEBUG>
 
     def _spawnVehicles(self):
         if self.real_routes is not None:
@@ -280,6 +279,14 @@ class TrafficControlEnv:
             else:
                 result = [[(tl,n)] + d for n in range(nphases) for d in result]                    
         return result
+
+    def _applyAction(self, action: int):
+        """ Applies a traffic control action to the traffic lights
+        """
+        actionCombinations = self._getActionCombinations()
+        if len(actionCombinations)>0:
+            for (tl, a) in actionCombinations[action]:
+                self._sumo.trafficlight.setPhase(tl,a)
 
     def _getAllRouteIDs(self):
         return [s for s in self._sumo.route.getIDList() if s[0]!='!']

@@ -27,7 +27,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          
          use_gui:Ann[Opt[bool], typer.Option(help="If set, performs the simulation using the sumo-gui command, i.e. with a graphical interface")] = False,
          
-         sumo_timestep:Ann[Opt[int], typer.Option(help='the number of sumo timesteps between RL timesteps (i.e. when actions are taken)')] = 10,  
+         sumo_timestep:Ann[Opt[int], typer.Option(help='the number of sumo timesteps between RL timesteps (i.e. when actions are taken)')] = 20,  
          
          seed:Ann[Opt[int], typer.Option(help='Random seed to be passed to sumo. This guarantees reproducible results. If not given, a different seed is chosen each time.')] = None,
          
@@ -55,6 +55,10 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          record_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
 
+         greedy_action:Ann[Opt[bool], typer.Option(help="If set, will apply action that shows the green light to the maximum number of cars. This is a useful benchmark.")] = False,
+
+         random_action:Ann[Opt[bool], typer.Option(help="If set, will apply a random action. This is a useful benchmark.")] = False,
+
          gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
           = 0.99,
  
@@ -65,7 +69,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
           = 128,
 
          replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
-          = 5000,
+          = 500000,
 
          lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
           = 0.0001,
@@ -91,7 +95,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     import torch.nn as nn
 
     network_layers = [int(s) for s in network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
     num_actions = env.get_num_actions()
     state_size = env.get_obs_dim()
     device = torch.device("cuda" if cuda and torch.cuda.is_available() else "cpu")
@@ -123,8 +127,8 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
             optimizer.step()
 
         replaybuffer = deque(maxlen=replay_buffer_size)
-        # optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
-        optim = torch.optim.SGD(qnet.parameters(), lr= lr)
+        optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
+        # optim = torch.optim.Adam(qnet.parameters(), lr= lr)
         loss = nn.MSELoss()
         rewards=[]
         for e in range(num_episodes):

@@ -31,6 +31,11 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     print(f"Number of traffic lights: {env.get_num_trafficlights()}")
     print(f"Number of actions: {env.get_num_actions()}")
     print(f"Dimension of observation space: {env.get_obs_dim()}")
+    print(f"All action combinations:")
+    a = env._getActionCombinations()
+    for k in a:
+        print(k)
+
     # print(f"Number of routes: {len(env.get_route_trajectories())}")
     env.close()
 
