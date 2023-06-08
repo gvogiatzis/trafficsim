@@ -12,6 +12,8 @@ from typing import Optional as Opt, List, Tuple
 from typing_extensions import Annotated as Ann
 from types import SimpleNamespace
 
+from rl import DQNAgent, DQNEnsemble
+from sumoenv import TrafficControlEnv
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
 state = SimpleNamespace() # state variable that will hold common set of options
@@ -23,7 +25,7 @@ state = SimpleNamespace() # state variable that will hold common set of options
 def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo network to use")],
          vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate at which new vehicles are being spawned")] = 0.05, 
 
-         episode_length:Ann[Opt[int], typer.Option(help='the number of timesteps for each episode')] = 100,
+         episode_length:Ann[Opt[int], typer.Option(help='the number of timesteps for each episode')] = 20,
          
          use_gui:Ann[Opt[bool], typer.Option(help="If set, performs the simulation using the sumo-gui command, i.e. with a graphical interface")] = False,
          
@@ -39,9 +41,9 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          
          num_episodes:Ann[Opt[int], typer.Option(help='The number of episodes to train the agent')] = 50,
 
-         input:Ann[Opt[str], typer.Option(help='filename of a previously saved agent model which will be used as a starting point for further training. If not set, a new network is initialised according to the network-layers option.')] = None,
+         in_model_fname:Ann[Opt[str], typer.Option(help='filename of a previously saved agent model which will be used as a starting point for further training. If not set, a new network is initialised according to the network-layers option.')] = None,
 
-         network_layers:Ann[Opt[str], typer.Option(help="A string of integers separated by 'x' chars, denoting the size and number of hidden layers of the network architecture. E.g. '512x512x256' would create three hidden layers of dims 512,512 and 256. Ignored if 'input' option is set.")] = "1024x1024",
+         network_layers:Ann[Opt[str], typer.Option(help="A string of integers separated by 'x' chars, denoting the size and number of hidden layers of the network architecture. E.g. '512x512x256' would create three hidden layers of dims 512,512 and 256. Ignored if 'in_model_fname' option is set.")] = "1024x1024",
          
          plot_reward: Ann[Opt[bool], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] = False,
 
@@ -70,114 +72,38 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
           = 500000,
+          
+         update_freq: Ann[Opt[int], typer.Option(help="This is the number of timesteps between model updates. ")] = 2,
 
          lr: Ann[Opt[float], typer.Option(help="The learning rate of the networks.")] 
           = 0.0001,
 
-         model_fname: Ann[Opt[str], typer.Option(help="If set, gives the filename to use when saving the trained model. If not set, the name of the network is used with a .pt extension")] = None,
+         out_model_fname: Ann[Opt[str], typer.Option(help="If set, gives the filename to use when saving the trained model. If not set, the name of the network is used with a .pt extension")] = None,
 
          save_intermediate: Ann[Opt[bool], typer.Option(help="If set, saves the trained model after every epoch at {output_path}/model/model{epoch:04d}.pt")] 
           = False,
 
-         test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False):
+         test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False,
+         
+         decentralized: Ann[Opt[bool], typer.Option(help="If set, uses separate RL agents on each junction, trained independently.")] = False):
 
-    # print(locals())
 
-    if model_fname is None:
-        model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
+    if out_model_fname is None:
+        out_model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
 
     from collections import deque
     from random import random,sample
-    from sumoenv import TrafficControlEnv
-    from sumoenv.models import MLPnet, loadModel, saveModel
     import matplotlib.pyplot as plt
     import torch
     import torch.nn as nn
 
     network_layers = [int(s) for s in network_layers.split("x")]
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
-    num_actions = env.get_num_actions()
-    state_size = env.get_obs_dim()
-    device = torch.device("cuda" if cuda and torch.cuda.is_available() else "cpu")
-    if input is not None:
-        qnet = loadModel(input)
-    else:
-        qnet = MLPnet(state_size, *network_layers, num_actions).to(device)    
-    state.__dict__.update(locals())
-    
-    if not test: # we do training
-        if not os.path.exists(f"{output_path}/models/"):
-            os.makedirs(f"{output_path}/models/")
 
-        def updateQNet_batch(qnet, batch, optimizer, loss):
-            s,a,r,s_new,d = batch
-            
-            s=torch.stack(s)
-            s_new=torch.stack(s_new)
-            r=torch.tensor(r,device=device,dtype=torch.float)
-            d=torch.tensor(d,device=device,dtype=torch.bool)
-            a=torch.tensor(a,device=device,dtype=torch.int64)
+    # env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
 
-            with torch.no_grad():
-                qmax,_ = qnet(s_new).view(-1,num_actions).max(dim=1)
-                target = torch.where(d, r, r + gamma * qmax).view(-1,1)
-            L = loss(qnet(s).gather(1,a.view(-1,1)),target)
-            optimizer.zero_grad()
-            L.backward()
-            optimizer.step()
 
-        replaybuffer = deque(maxlen=replay_buffer_size)
-        optim = torch.optim.RMSprop(qnet.parameters(), lr= lr)
-        # optim = torch.optim.Adam(qnet.parameters(), lr= lr)
-        loss = nn.MSELoss()
-        rewards=[]
-        for e in range(num_episodes):
-            done = False
-            S = env.reset()
-            tot_reward=0
-
-            # epsilon = max(0.1, epsilon*0.99)
-            while not done:
-                # Epsilon-greedy strategy
-                A = env.sample_action() if random()<epsilon else qnet(S).argmax().item()
-
-                # Executing action, receiving reward and new state
-                S_new, R, done = env.step(A)
-
-                # adding the latest experience onto the replay buffer
-                replaybuffer.append((S,A,R,S_new,done))
-
-                S = S_new
-                if len(replaybuffer)>=batch_size:
-                    batch = sample(replaybuffer, batch_size)
-                    batch = zip(*batch)    
-                    updateQNet_batch(qnet, batch, optim, loss)
-
-                tot_reward += R
-
-            rewards.append(tot_reward)
-            print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
-
-            if save_intermediate:
-                save_fname = os.path.join(output_path, 'models', f"{os.path.splitext(model_fname)[0]}{e:04d}.pt")
-                saveModel(qnet, save_fname)
-
-        saveModel(qnet, os.path.join(output_path, 'models', model_fname))
-    else: # we do simple testing of an existing model
-        rewards=[]
-        for e in range(num_episodes):
-            done = False
-            S = env.reset()
-            tot_reward=0
-            while not done:
-                A = qnet(S).argmax().item()
-                # Executing action, receiving reward and new state
-                S_new, R, done = env.step(A)
-                S=S_new
-                tot_reward += R
-            rewards.append(tot_reward)
-            print(f"Testing: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
-
+    rewards = centralized_RL(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq, decentralized=decentralized)
 
     if plot_reward:
         print('plotting reward')
@@ -187,6 +113,74 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     env.close()
 
 
+
+def decentralized_RL():
+    pass
+
+def centralized_RL(env:TrafficControlEnv, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,decentralized):
+
+    num_actions = env.get_num_actions()
+    state_size = env.get_obs_dim()
+
+    if decentralized:
+        dqn_agent = DQNEnsemble(env, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
+        print(f"We are using {len(dqn_agent.agents)} decentralized agents")
+    else:
+        dqn_agent = DQNAgent(state_size=state_size, num_actions=num_actions,network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
+        print(f"We are using a single centralized agent")
+
+    if in_model_fname is not None:
+        dqn_agent.load_from_file(in_model_fname)
+    
+    if not os.path.exists(f"{output_path}/models/"):
+        os.makedirs(f"{output_path}/models/")
+
+    rewards=[]
+    steps_to_update = update_freq
+    for e in range(num_episodes):
+        done = False
+        S_new = env.reset(multi_action = decentralized)
+
+        tot_reward=0
+
+        # epsilon = max(0.1, epsilon*0.99)
+        while not done:
+            S = S_new # Update the current state
+            A = dqn_agent.choose_action(S)
+
+            # Executing action, receiving reward and new state
+            if decentralized:
+                S_new, R, done = env.step(multi_action = A)
+            else:
+                S_new, R, done = env.step(action = A)
+
+            if decentralized:
+                # tot_reward += sum(r for _,r in R.items())  # Accumulate the reward
+                tot_reward += -env.get_total_hallting_number()  # Accumulate the reward
+            else:
+                tot_reward += R  # Accumulate the reward
+
+            if not test:
+                dqn_agent.remember(S, A, R, S_new, done)  # Remember the experience
+                dqn_agent.replay()  # Train the agent by replaying experiences
+
+                steps_to_update -= 1
+                if steps_to_update == 0:
+                    dqn_agent.update_target_model()
+                    steps_to_update = update_freq
+            
+
+
+        rewards.append(tot_reward)
+        print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
+
+        if save_intermediate:
+            save_fname = os.path.join(output_path, 'models', f"{os.path.splitext(out_model_fname)[0]}{e:04d}.pt")
+            dqn_agent.save_to_file(save_fname)
+
+    final_save_name = os.path.join(output_path, 'models', out_model_fname)
+    dqn_agent.save_to_file(final_save_name)
+    return rewards
 
 
 if __name__ == "__main__":

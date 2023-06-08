@@ -7,6 +7,14 @@ class TrafficControlerNet(nn.Module):
     def __init__(self,*input):
         super().__init__()
         self.constructor_input = input
+    
+    def to_dict(self):
+        cl = self.__class__
+        cons_input = self.constructor_input
+        weights = self.state_dict()
+        return {'class':cl, 'cons-input':cons_input, 'weights':weights}
+    
+
 
 class MLPnet(TrafficControlerNet):
     def __init__(self, *sizes):
@@ -34,13 +42,20 @@ class MLPnet2(TrafficControlerNet):
         x = self.layers[-1](x)
         return x
 
-def saveModel(model, fname):
-    cl = model.__class__
-    cons_input = model.constructor_input
-    weights = model.state_dict()
-    torch.save({'class':cl, 'cons-input':cons_input, 'weights':weights}, fname)
+def saveModel(model: TrafficControlerNet, fname: str):
+    torch.save(model.to_dict(), fname)
 
-def loadModel(fname):
+def loadModel_from_dict(model_dict:dict):
+    cl = model_dict['class']    
+    cons_input = model_dict['cons-input']
+    weights = model_dict['weights']
+
+    model = cl(*cons_input)
+    model.load_state_dict(weights)
+    return model
+
+
+def loadModel(fname: str):
     d = torch.load(fname)
     cl = d['class']    
     cons_input = d['cons-input']
