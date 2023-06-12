@@ -1,19 +1,13 @@
-from .models import MLPnet, loadModel, saveModel, loadModel_from_dict
 from .dqn_agent import DQNAgent
-from sumoenv import TrafficControlEnv
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import random
 import numpy as np
 
 from typing import Dict
 
 class DQNEnsemble:
-    def __init__(self, env:TrafficControlEnv, network_layers, learning_rate=0.001, discount_factor=0.99, epsilon=1.0, epsilon_decay=0.999, epsilon_min=0.01, batch_size=32, memory_capacity=10000):
+    def __init__(self, schema, network_layers, learning_rate=0.001, discount_factor=0.99, epsilon=1.0, epsilon_decay=0.999, epsilon_min=0.01, batch_size=32, memory_capacity=10000):
         self.network_layers = network_layers
         self.agents: Dict[int,DQNAgent] = dict()
-        schema = env.get_action_breakdown()
         for id, (state_size, num_actions) in schema.items():
             self.agents[id] = DQNAgent(state_size=state_size, num_actions=num_actions, network_layers=network_layers,learning_rate=learning_rate, discount_factor=discount_factor, epsilon=epsilon, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min, batch_size=batch_size, memory_capacity=memory_capacity)        
 

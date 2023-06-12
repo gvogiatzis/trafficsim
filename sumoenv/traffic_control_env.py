@@ -48,7 +48,8 @@ class TrafficControlEnv:
         self.episode_length = episode_length
         self._net_fname = net_fname
         self.vehicle_spawn_rate = vehicle_spawn_rate
-        self.actionCombinations = None
+        self.action_to_multiaction_list = None
+        self.multiaction_to_action_dict = None
         self.route_dict = None
         self._net = sumolib.net.readNet(self._net_fname, withPrograms=True)
         self._sumo = None
@@ -97,7 +98,7 @@ class TrafficControlEnv:
         self._sumo.simulation.saveState('state.sumo')
     
 
-    def reset(self, seed = None, multi_action=False):
+    def reset(self, seed = None, decentralized=False):
         """
         Initalizes a new environment. 
         
@@ -122,10 +123,10 @@ class TrafficControlEnv:
         self._sumo.simulationStep()
         self.episode_step_countdown = self.episode_length
 
-        self.actionCombinations = self._getActionCombinations()
+        self.action_to_multiaction_list, self.multiaction_to_action_dict = self.initialize_actions()
         
     
-        if multi_action:
+        if decentralized:
             r: Dict[str, Tuple[np.ndarray, float]] = dict()
             for tlID in self._sumo.trafficlight.getIDList():
                 r[tlID] = self.get_local_state(tlID)
@@ -133,7 +134,7 @@ class TrafficControlEnv:
         else:
             return self.get_total_state()
     
-    def step(self, action=None, multi_action=None):
+    def step(self, action=None):
         """ Steps the simulation through one timestep
         
         Executes a single simulation step after passing an action to the
@@ -160,18 +161,24 @@ class TrafficControlEnv:
         done: boolean
             is true if the episode is finished
         """
-        if action is not None:
+        if self.random_action or self.greedy_action or action is None:
+            if self.random_action or action is None:
+                action_override = self.sample_action()
+            elif self.greedy_action:
+                multi_action_override = dict()
+                for tl in self._sumo.trafficlight.getIDList():
+                    demand = self._get_TLS_demand_breakdown(tl)
+                    multi_action_override[tl] = np.argmax(demand)
+                action_override = self.multiaction_to_action(multi_action_override)
+            if type(action) is dict: #that means the user wanted a multi_action response
+                action = self.action_to_multiaction(action_override)
+            else: # action is an int or None
+                action = action_override
+
+        if type(action) is dict:
+            self._applyMultiaction(action)
+        else:
             self._applyAction(action)
-        if multi_action is not None:
-            self._applyMultiaction(multi_action)
-        if self.random_action or (action is None and multi_action is None):
-            a = self.sample_action()
-            self._applyAction(a)
-        if self.greedy_action:
-            for tl in self._sumo.trafficlight.getIDList():
-                demand = self._get_TLS_demand_breakdown(tl)
-                a = np.argmax(demand)
-                self._sumo.trafficlight.setPhase(tl,a)
 
         for _ in range(self.sumo_timestep):
             self._spawnVehicles()
@@ -186,7 +193,7 @@ class TrafficControlEnv:
         self.episode_step_countdown -= 1
 
         done = self.episode_step_countdown==0
-        if multi_action is not None:
+        if type(action) is dict:
             multi_state:Dict[str, np.ndarray] = dict()
             multi_reward:Dict[str, float] = dict()
             for tlID in self._sumo.trafficlight.getIDList():
@@ -245,6 +252,14 @@ class TrafficControlEnv:
         inclusive 
         """
         return random.randint(0, self.get_num_actions()-1)    
+
+    def action_to_multiaction(self, a:int):
+        if type(a) is int:
+            return {t:act for t,act in self.action_to_multiaction_list}
+
+    def multiaction_to_action(self, multi_action:dict):
+        key = tuple(a for id, a in sorted(multi_action.items(), key = lambda x:x[0]))
+        return self.multiaction_to_action_dict[key]
     
     def get_action_breakdown(self):
         """ Returns the schema of all independent decisions. It is a dictionary who's keys are the traffic light IDs and the items are (obs_dim, num_actions) pairs. This can be used to create independent (discrete) RL agents solving each light. Obs_dim is the dimension of the observation vector while num_actions is the number of phases for that particular traffic light.        
@@ -416,23 +431,25 @@ class TrafficControlEnv:
             demand.append(phasedemand) 
         return demand
 
-    def _getActionCombinations(self):
-        result = []
+
+    def initialize_actions(self):
+        a_to_ma = []
+        ma_to_a = dict()
         for tl in self._sumo.trafficlight.getIDList():
             logic = self._sumo.trafficlight.getAllProgramLogics(tl)[0]
             nphases = len(logic.getPhases())
-            if len(result)==0:
-                result = [[(tl, n)] for n in range(nphases)]
+            if len(a_to_ma)==0:
+                a_to_ma = [[(tl, n)] for n in range(nphases)]
             else:
-                result = [[(tl,n)] + d for n in range(nphases) for d in result]                    
-        return result
+                a_to_ma = [[(tl,n)] + d for n in range(nphases) for d in a_to_ma]
+        ma_to_a = {tuple(y for x,y in sorted(r,key=lambda x:x[0])):i for i,r in enumerate(a_to_ma)}
+        return a_to_ma, ma_to_a
 
     def _applyAction(self, action: int):
         """ Applies a traffic control action to the traffic lights
         """
-        actionCombinations = self._getActionCombinations()
-        if len(actionCombinations)>0:
-            for (tl, a) in actionCombinations[action]:
+        if len(self.action_to_multiaction_list)>0:
+            for (tl, a) in self.action_to_multiaction_list[action]:
                 self._sumo.trafficlight.setPhase(tl,a)
 
     def _applyMultiaction(self, multi_action: dict):

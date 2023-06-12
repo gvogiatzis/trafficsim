@@ -12,10 +12,8 @@ from typing import Optional as Opt, List, Tuple
 from typing_extensions import Annotated as Ann
 from types import SimpleNamespace
 
-from rl import DQNAgent, DQNEnsemble
-from sumoenv import TrafficControlEnv
 
-app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
+app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=True)
 state = SimpleNamespace() # state variable that will hold common set of options
 
 
@@ -57,9 +55,9 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          record_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
 
-         greedy_action:Ann[Opt[bool], typer.Option(help="If set, will apply action that shows the green light to the maximum number of cars. This is a useful benchmark.")] = False,
+         greedy_action:Ann[Opt[bool], typer.Option(help="If set, will apply action that shows the green light to the maximum number of cars. This is a useful benchmark. If used in conjunction with training, will act as imitation RL where the agent is shown only the greedy actions being applied.")] = False,
 
-         random_action:Ann[Opt[bool], typer.Option(help="If set, will apply a random action. This is a useful benchmark.")] = False,
+         random_action:Ann[Opt[bool], typer.Option(help="If set, will apply a random action. This is a useful benchmark. If used in conjunction with training, will act as imitation RL where the agent is shown only the random actions being applied. Effectively equivalent to lambda = 0.")] = False,
 
          gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
           = 0.99,
@@ -91,11 +89,9 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     if out_model_fname is None:
         out_model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
 
-    from collections import deque
-    from random import random,sample
+    from sumoenv import TrafficControlEnv
+
     import matplotlib.pyplot as plt
-    import torch
-    import torch.nn as nn
 
     network_layers = [int(s) for s in network_layers.split("x")]
 
@@ -103,7 +99,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
 
 
-    rewards = centralized_RL(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq, decentralized=decentralized)
+    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq, decentralized=decentralized)
 
     if plot_reward:
         print('plotting reward')
@@ -114,18 +110,17 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-def decentralized_RL():
-    pass
+def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,decentralized):
+    from rl import DQNAgent, DQNEnsemble
 
-def centralized_RL(env:TrafficControlEnv, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,decentralized):
-
-    num_actions = env.get_num_actions()
-    state_size = env.get_obs_dim()
 
     if decentralized:
-        dqn_agent = DQNEnsemble(env, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
+        schema = env.get_action_breakdown()
+        dqn_agent = DQNEnsemble(schema=schema, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
         print(f"We are using {len(dqn_agent.agents)} decentralized agents")
     else:
+        num_actions = env.get_num_actions()
+        state_size = env.get_obs_dim()
         dqn_agent = DQNAgent(state_size=state_size, num_actions=num_actions,network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
         print(f"We are using a single centralized agent")
 
@@ -139,26 +134,17 @@ def centralized_RL(env:TrafficControlEnv, cuda, network_layers, output_path, gam
     steps_to_update = update_freq
     for e in range(num_episodes):
         done = False
-        S_new = env.reset(multi_action = decentralized)
+        S_new = env.reset(decentralized=decentralized)
 
         tot_reward=0
 
-        # epsilon = max(0.1, epsilon*0.99)
         while not done:
             S = S_new # Update the current state
             A = dqn_agent.choose_action(S)
 
-            # Executing action, receiving reward and new state
-            if decentralized:
-                S_new, R, done = env.step(multi_action = A)
-            else:
-                S_new, R, done = env.step(action = A)
+            S_new, R, done = env.step(A)
 
-            if decentralized:
-                # tot_reward += sum(r for _,r in R.items())  # Accumulate the reward
-                tot_reward += -env.get_total_hallting_number()  # Accumulate the reward
-            else:
-                tot_reward += R  # Accumulate the reward
+            tot_reward += -env.get_total_hallting_number()  # Accumulate the reward (works for decentralized too)
 
             if not test:
                 dqn_agent.remember(S, A, R, S_new, done)  # Remember the experience
@@ -169,8 +155,6 @@ def centralized_RL(env:TrafficControlEnv, cuda, network_layers, output_path, gam
                     dqn_agent.update_target_model()
                     steps_to_update = update_freq
             
-
-
         rewards.append(tot_reward)
         print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
 
