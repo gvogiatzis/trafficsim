@@ -5,3 +5,4 @@ __pycache__/
 state.sumo
 script*
 tmp
+misc/
