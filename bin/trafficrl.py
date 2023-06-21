@@ -10,11 +10,9 @@ if os.path.basename(sys.argv[0]) != "trafficrl.py":
 import typer
 from typing import Optional as Opt, List, Tuple
 from typing_extensions import Annotated as Ann
-from types import SimpleNamespace
 
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=True)
-state = SimpleNamespace() # state variable that will hold common set of options
 
 
 
@@ -62,7 +60,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
           = 0.99,
  
-         epsilon: Ann[Opt[float], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
+         epsilon: Ann[Opt[float], typer.Option(help="The probability of choosing a random action in each timestep. Increase to help with exploration at the expense of worse performance.")] 
           = 0.1,
 
          batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
@@ -83,21 +81,24 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False,
          
-         decentralized: Ann[Opt[bool], typer.Option(help="If set, uses separate RL agents on each junction, trained independently.")] = False):
+         decentralized: Ann[Opt[bool], typer.Option(help="If set, uses separate RL agents on each junction, trained independently.")] = False,
+
+         pretraining: Ann[Opt[bool], typer.Option(help="If set, uses a simplified simulation traffic environment.")] = False):
 
 
     if out_model_fname is None:
         out_model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
 
-    from sumoenv import TrafficControlEnv
+    from sumoenv import SimTrafficControlEnv, TrafficControlEnv
 
     import matplotlib.pyplot as plt
 
     network_layers = [int(s) for s in network_layers.split("x") if s.isnumeric()]
 
-    # env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=lambda x:torch.tensor(x,dtype=torch.float),episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
-
+    if pretraining:
+        env = SimTrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
+    else:
+        env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
 
     rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq, decentralized=decentralized)
 
@@ -140,11 +141,15 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
 
         while not done:
             S = S_new # Update the current state
-            A = dqn_agent.choose_action(S)
+            A = dqn_agent.choose_action(S, deterministic = test)
 
             S_new, R, done = env.step(A)
 
-            tot_reward += -env.get_total_hallting_number()  # Accumulate the reward (works for decentralized too)
+
+            if type(R) is dict:
+                tot_reward += -env.get_total_hallting_number()  # Accumulate the reward (works for decentralized too)
+            else:
+                tot_reward += R
 
             if not test:
                 dqn_agent.remember(S, A, R, S_new, done)  # Remember the experience

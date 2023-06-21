@@ -1,1 +1,2 @@
 from .traffic_control_env import TrafficControlEnv
+from .sim_traffic_control_env import SimTrafficControlEnv

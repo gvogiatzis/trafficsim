@@ -11,10 +11,10 @@ class DQNEnsemble:
         for id, (state_size, num_actions) in schema.items():
             self.agents[id] = DQNAgent(state_size=state_size, num_actions=num_actions, network_layers=network_layers,learning_rate=learning_rate, discount_factor=discount_factor, epsilon=epsilon, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min, batch_size=batch_size, memory_capacity=memory_capacity)        
 
-    def choose_action(self, multi_state: Dict[str, np.ndarray]):
+    def choose_action(self, multi_state: Dict[str, np.ndarray], deterministic=False):
         a: Dict[str, int] = dict()
         for id, agent in self.agents.items():
-            a[id] = agent.choose_action(multi_state[id])            
+            a[id] = agent.choose_action(multi_state[id], deterministic)            
         return a
 
     def remember(self, multi_state: Dict[str, np.ndarray], multi_action: Dict[str, int], multi_reward: Dict[str, float], multi_next_state: Dict[str, np.ndarray], done:bool):

@@ -26,16 +26,16 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.criterion = nn.MSELoss()
 
-    def choose_action(self, state):
-        if np.random.uniform(0, 1) < self.epsilon:
-            # Explore: choose a random action
-            action = random.randint(0, self.num_actions - 1)
-        else:
+    def choose_action(self, state, deterministic=False):
+        if deterministic or np.random.uniform(0, 1)>=self.epsilon:
             # Exploit: choose the action with maximum Q-value for the current state
             state_tensor = torch.tensor(state, dtype=torch.float).unsqueeze(0)
             with torch.no_grad():
                 q_values = self.model(state_tensor)
                 action = torch.argmax(q_values).item()
+        else:
+            # Explore: choose a random action
+            action = random.randint(0, self.num_actions - 1)
         return action
 
     def remember(self, state, action, reward, next_state, done):
