@@ -131,6 +131,11 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
     if not os.path.exists(f"{output_path}/models/"):
         os.makedirs(f"{output_path}/models/")
 
+    import torch
+    M = env.green_lanes_per_action
+    dqn_agent.model.layers[0].weight.data=torch.tensor(100000*M.T,dtype=dqn_agent.model.layers[0].weight.dtype)
+
+
     rewards=[]
     steps_to_update = update_freq
     for e in range(num_episodes):
@@ -142,6 +147,8 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
         while not done:
             S = S_new # Update the current state
             A = dqn_agent.choose_action(S, deterministic = test)
+
+            # A = (S @ M).argmax())
 
             S_new, R, done = env.step(A)
 

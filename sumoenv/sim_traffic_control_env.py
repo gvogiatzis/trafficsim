@@ -64,6 +64,8 @@ class SimTrafficControlEnv:
         self.real_routes_file = real_routes_file
         self.greedy_action = greedy_action
         self.random_action=random_action
+        self.sim_observation=None
+
         sanes = None
 
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
@@ -99,7 +101,11 @@ class SimTrafficControlEnv:
         self._sumo.simulation.saveState('state.sumo')
 
         self.action_to_multiaction_dict, self.multiaction_to_action_dict = self.initialize_actions()
-    
+
+
+        self.sim_observation = np.zeros(shape=(self.get_obs_dim()))
+        self.green_lanes_per_action = self.get_green_lanes_per_action()
+        print(f"green_lanes_per_action={self.green_lanes_per_action}")
 
     def reset(self, seed = None, decentralized=False):
         """
@@ -137,10 +143,10 @@ class SimTrafficControlEnv:
         # else:
         #     return self.get_total_state()
 
-        self.green_lanes_per_action = self.get_green_lanes_per_action()
-        obs_dim = self.get_obs_dim()
-        obs = np.random.randint(low=0,high=100,size=(obs_dim))
-        return obs
+        
+
+        self.sim_observation = np.random.randint(low=0,high=100,size=self.sim_observation.shape)
+        return self.sim_observation
     
 
     def step(self, action=None):
@@ -177,14 +183,18 @@ class SimTrafficControlEnv:
 
         done = self.episode_step_countdown==0
 
-        obs_dim = self.get_obs_dim()
-        if action == 7:
+
+
+        total_greens = self.sim_observation @ self.green_lanes_per_action 
+        
+        if action == total_greens.argmax():
+        # if action == 10:
             R = 100
         else:
             R = 0
         # print(f"R={R}")
-        obs = np.random.randint(low=0,high=100,size=(obs_dim))
-        return obs, R, done
+        self.sim_observation = np.random.randint(low=0,high=100,size=self.sim_observation.shape)
+        return self.sim_observation, R, done
 
 
     def close(self):

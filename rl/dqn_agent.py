@@ -23,7 +23,8 @@ class DQNAgent:
         self.target_model = MLPnet(state_size, *network_layers, num_actions)
         self.target_model.load_state_dict(self.model.state_dict())
         
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        # self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.criterion = nn.MSELoss()
 
     def choose_action(self, state, deterministic=False):
