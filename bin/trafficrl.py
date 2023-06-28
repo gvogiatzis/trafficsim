@@ -15,8 +15,6 @@ from typing_extensions import Annotated as Ann
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=True)
 
 
-
-
 @app.command()
 def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo network to use")],
          vehicle_spawn_rate: Ann[Opt[float], typer.Option(help="The average rate at which new vehicles are being spawned")] = 0.05, 
@@ -132,8 +130,13 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
         os.makedirs(f"{output_path}/models/")
 
     import torch
-    M = env.green_lanes_per_action
-    dqn_agent.model.layers[0].weight.data=torch.tensor(100000*M.T,dtype=dqn_agent.model.layers[0].weight.dtype)
+    M = torch.tensor(env.green_lanes_per_action, dtype=torch.float)
+
+    # def target_fun(states):
+    #     r = states @ env.green_lanes_per_action
+    #     r.max
+
+    # dqn_agent.model.layers[0].weight.data=torch.tensor(100000*M.T,dtype=dqn_agent.model.layers[0].weight.dtype)
 
 
     rewards=[]
@@ -161,6 +164,7 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
             if not test:
                 dqn_agent.remember(S, A, R, S_new, done)  # Remember the experience
                 dqn_agent.replay()  # Train the agent by replaying experiences
+                # dqn_agent.replay_supervised(target_fun= lambda x: x @ M)
 
                 steps_to_update -= 1
                 if steps_to_update == 0:
@@ -177,7 +181,6 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
     final_save_name = os.path.join(output_path, 'models', out_model_fname)
     dqn_agent.save_to_file(final_save_name)
     return rewards
-
 
 if __name__ == "__main__":
     app()

@@ -97,8 +97,7 @@ class SimTrafficControlEnv:
         traci.start(sumo_command,verbose=True, label="default")
 
         self._sumo = traci.getConnection(label="default")
-        self._initialize_routes()
-        self._sumo.simulation.saveState('state.sumo')
+
 
         self.action_to_multiaction_dict, self.multiaction_to_action_dict = self.initialize_actions()
 
@@ -126,23 +125,7 @@ class SimTrafficControlEnv:
         self.state_wrapper is defined.
         """
 
-        # self._sumo.simulation.loadState('state.sumo')
-
-        # self._spawnVehicles()
-        # self._sumo.simulationStep()
         self.episode_step_countdown = self.episode_length
-
-
-        
-    
-        # if decentralized:
-        #     r: Dict[str, Tuple[np.ndarray, float]] = dict()
-        #     for tlID in self._sumo.trafficlight.getIDList():
-        #         r[tlID] = self.get_local_state(tlID)
-        #     return r
-        # else:
-        #     return self.get_total_state()
-
         
 
         self.sim_observation = np.random.randint(low=0,high=100,size=self.sim_observation.shape)
@@ -177,7 +160,6 @@ class SimTrafficControlEnv:
         done: boolean
             is true if the episode is finished
         """
-        # decentralized = (type(action) is dict)
 
         self.episode_step_countdown -= 1
 
@@ -210,8 +192,6 @@ class SimTrafficControlEnv:
         -------
         none
         """
-        if os.path.exists('state.sumo'):
-            os.remove('state.sumo')
         if traci.isLoaded():
             self._sumo.close()
             self._sumo=None
@@ -245,25 +225,7 @@ class SimTrafficControlEnv:
         inclusive 
         """
         return random.randint(0, self.get_num_actions()-1)    
-
-    def action_to_multiaction(self, a:int):
-        if type(a) is int:
-            return self.action_to_multiaction_dict[a]
-
-    def multiaction_to_action(self, multi_action:dict):
-        key = tuple(a for id, a in sorted(multi_action.items(), key = lambda x:x[0]))
-        return self.multiaction_to_action_dict[key]
     
-    def get_action_breakdown(self):
-        """ Returns the schema of all independent decisions. It is a dictionary who's keys are the traffic light IDs and the items are (obs_dim, num_actions) pairs. This can be used to create independent (discrete) RL agents solving each light. Obs_dim is the dimension of the observation vector while num_actions is the number of phases for that particular traffic light.        
-        """
-        schema = dict()
-        for tlID in self._sumo.trafficlight.getIDList():
-            logic = self._sumo.trafficlight.getAllProgramLogics(tlID)[0]
-            lanes = self._sumo.trafficlight.getControlledLanes(tlID)
-            phases = logic.getPhases()
-            schema[tlID] = (len(lanes), len(phases))
-        return schema
 
     def get_obs_dim(self):
         """ Returns the dimensionality of the observation vector
@@ -271,144 +233,9 @@ class SimTrafficControlEnv:
         return sum(len(e.getLanes()) for e in self._net.getEdges())
 
 
-    def set_all_lights(self, state):
-        """
-        Sets all lights in all traffic junction to the same state. The input state is one of the chars of 'rugGyYuoO'
-        """
-        # print(f"setting all lights to {state}")
-        for tlID in self._sumo.trafficlight.getIDList():
-            n = len(self._sumo.trafficlight.getControlledLanes(tlID))
-            self._sumo.trafficlight.setRedYellowGreenState(tlID, state * n)
-
-    def get_total_state(self):
-        """
-        This gets the lane observations for the entire traffic network
-        """        
-        # lanes = self._sumo.lane.getIDList() # This inludes :xyz internals
-        lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
-        result = []
-        for lane in lanes:
-            # result.append(self._sumo.lane.getLastStepVehicleNumber(lane.getID()))
-            result.append(self._sumo.lane.getLastStepHaltingNumber(lane.getID()))
-        if self.state_wrapper is not None:
-            return self.state_wrapper(np.array(result))
-        else:
-            return np.array(result)
-        
-    def get_local_state(self, tlID):
-        """
-        This gets the lane observations for all the lanes controlled by this traffic light
-        """
-        lanes = self._sumo.trafficlight.getControlledLanes(tlID)
-        result=[]
-        for lane in lanes:
-            result.append(self._sumo.lane.getLastStepHaltingNumber(lane))
-        if self.state_wrapper is not None:
-            return self.state_wrapper(np.array(result))
-        else:
-            return np.array(result)
-
-    def get_total_hallting_number(self):
-        """
-        This is the total number of cars stopping in the entire network.
-        """
-        lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
-        r = sum(self._sumo.lane.getLastStepHaltingNumber(lane.getID()) for lane in lanes)
-        return r
-
-    def get_local_hallting_number(self, tlID):
-        """
-        This is the total number of cars stopping in this traffic light
-        """
-        lanes = self._sumo.trafficlight.getControlledLanes(tlID)
-        r = sum(self._sumo.lane.getLastStepHaltingNumber(lane) for lane in lanes)
-        return r
-
-    def _getCurrentTotalTimeLoss(self):
-        dt = self._sumo.simulation.getDeltaT()
-        timeloss = 0
-
-        vehIDs = self._sumo.vehicle.getIDList()
-        for vehID in vehIDs:
-            Vmax = self._sumo.vehicle.getAllowedSpeed(vehID)
-            V = self._sumo.vehicle.getSpeed(vehID)
-            timeloss += (1 - V/Vmax) * dt
-        # return timeloss / len(vehIDs)
-        return timeloss
-
-    def get_route_trajectories(self, save_file = None, plot_traj=False):   
-        """
-        Helper method for generating all possible vehicle routes (with detailed x,y trajectories for each). This is used in the getallroutes script which must be called before the routegui.
-        """     
-        route_traj = dict()
-        route_waypoints=dict()
-        print("_getAllRouteIDs")
-        print(self._getAllRouteIDs())
-        for routeID in self._getAllRouteIDs():
-            route=[]
-            waypoints=[]
-            vehID = "veh"+routeID
-            self._sumo.vehicle.add(vehID, routeID, departLane="best", )
-            self._sumo.simulationStep()
-            self._sumo.simulationStep()
-            self.set_all_lights('r')
-            found_red_light=False
-            while self._sumo.vehicle.getIDCount()>0:
-                if self._sumo.vehicle.getSpeed(vehID)==0.0 and not found_red_light:
-                    found_red_light = True
-                    waypoints.append(self._sumo.vehicle.getPosition(vehID))
-                    self.set_all_lights('G')
-                route.append(self._sumo.vehicle.getPosition(vehID))
-                self._sumo.simulationStep()
-            
-            route_traj[routeID] = route
-            route_waypoints[routeID] = waypoints
-        if save_file is not None:
-            with open(save_file, 'wb') as f:
-                pickle.dump({"trajectories":route_traj, "waypoints":route_waypoints},f)
-        if plot_traj:
-            plt.figure()
-            for r,xy in route_traj.items():
-                X = [x for (x,y) in xy]
-                Y = [y for (x,y) in xy]
-                plt.plot(X,Y,'-')
-                if r in route_waypoints:
-                    wps = route_waypoints[r]
-                    X = [x for (x,y) in wps]
-                    Y = [y for (x,y) in wps]
-                    plt.plot(X,Y,marker='o',markersize=5)
-            plt.show()
-        print(f"found {len(route_traj)} routes")
-        return route_traj
-
-    def _saveVehicles(self, output_path, use_total_time=False):
-        if use_total_time:
-            fname = f"{output_path}/{self.total_steps_run:009}.txt"
-        else:
-            step = self.episode_length-self.episode_step_countdown
-            fname = f"{output_path}/{self.current_episode:03}_{step:04d}.txt"
-        with open(fname, "w") as f:
-            for v in self._sumo.vehicle.getIDList():
-                route_edges = self._sumo.vehicle.getRoute(v)
-                x,y = self._sumo.vehicle.getPosition(v)
-                e0 = route_edges[0]
-                e1 = route_edges[-1]
-                routeID = self.route_dict[e0][e1]
-                f.write(f"{routeID}, {x}, {y}\n")
-
-
-    def _spawnVehicles(self):
-        if self.real_routes is not None:
-            all_routeIDs = self.real_routes 
-        else:
-            all_routeIDs = self._getAllRouteIDs()
-        for routeID in all_routeIDs:
-            if random.random() < self.vehicle_spawn_rate:
-                vehID = f"veh{self._vehcnt:08d}"
-                self._sumo.vehicle.add(vehID, routeID)
-                self._sumo.vehicle.setLength(vehID, self.car_length)
-                self._sumo.vehicle.setWidth(vehID, self.car_length/3.5)
-                self._vehcnt +=1
+    def action_to_multiaction(self, a:int):
+        if type(a) is int:
+            return self.action_to_multiaction_dict[a]
 
     def get_green_lanes_per_action(self):
         lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
@@ -430,20 +257,6 @@ class SimTrafficControlEnv:
                         result[row,act] = 1.0
         return result
 
-    def _get_TLS_demand_breakdown(self, tls_id):
-        logic = self._sumo.trafficlight.getAllProgramLogics(tls_id)[0]
-        lanes = self._sumo.trafficlight.getControlledLanes(tls_id)
-        phases = logic.getPhases()
-        demand = []
-        for phase in phases:
-            phasedemand=0
-            for lane, s in zip(lanes,phase.state):
-                if s in ['g','G']:
-                    phasedemand += self._sumo.lane.getLastStepVehicleNumber(lane)
-                    # phasedemand += self._sumo.lane.getLastStepOccupancy(lane)
-            demand.append(phasedemand) 
-        return demand
-
 
     def initialize_actions(self):
         """
@@ -461,33 +274,3 @@ class SimTrafficControlEnv:
         a_to_ma = {i:{x:y for x,y in r}    for i,r in enumerate(action_list)}
         ma_to_a = {tuple(y for x,y in sorted(r,key=lambda x:x[0])):i for i,r in enumerate(action_list)}
         return a_to_ma, ma_to_a
-
-    def _applyAction(self, action: int):
-        """ Applies a traffic control action to the traffic lights
-        """
-        if len(self.action_to_multiaction_dict)>0:
-            for (tl, a) in self.action_to_multiaction_dict[action]:
-                self._sumo.trafficlight.setPhase(tl,a)
-
-    def _applyMultiaction(self, multi_action: dict):
-        """ Applies a traffic control multi_action dict to the traffic lights
-        """
-        for tlID, action in multi_action.items():
-            self._sumo.trafficlight.setPhase(tlID,action)
-
-
-    def _getAllRouteIDs(self):
-        return [s for s in self._sumo.route.getIDList() if s[0]!='!']
-
-    
-    def _initialize_routes(self):
-        self.route_dict = defaultdict(dict)
-        edges = self._net.getEdges()
-        for e1 in edges:
-            if e1.is_fringe():
-                for e2 in self._net.getReachable(e1):
-                    if e2.is_fringe():
-                        if e1!=e2 and e1.getID().replace('-','') != e2.getID().replace('-',''):
-                            routeID = f"{e1.getID()}->{e2.getID()}"
-                            self._sumo.route.add(routeID, [e1.getID(), e2.getID()])
-                            self.route_dict[e1.getID()][e2.getID()] = routeID

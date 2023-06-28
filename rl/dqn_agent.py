@@ -4,6 +4,8 @@ import torch.optim as optim
 import random
 import numpy as np
 
+from typing import Callable
+
 from .models import MLPnet, loadModel, saveModel, loadModel_from_dict
 
 class DQNAgent:
@@ -23,8 +25,8 @@ class DQNAgent:
         self.target_model = MLPnet(state_size, *network_layers, num_actions)
         self.target_model.load_state_dict(self.model.state_dict())
         
-        # self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        # self.optimizer = optim.RMSprop(self.model.parameters(), lr=10*self.learning_rate)
         self.criterion = nn.MSELoss()
 
     def choose_action(self, state, deterministic=False):
@@ -44,6 +46,31 @@ class DQNAgent:
         if len(self.memory) > self.memory_capacity:
             self.memory.pop(0)
 
+
+
+    def replay_supervised(self, target_fun: Callable[[np.ndarray], np.ndarray]):
+        if len(self.memory) < self.batch_size:
+            return
+
+        batch = random.sample(self.memory, self.batch_size)
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
+
+        state_batch = torch.tensor(np.array(state_batch), dtype=torch.float)
+
+        q_values = self.model(state_batch)
+
+        # This comes from the target function (supervised learning)
+        _, targets = torch.max(target_fun(state_batch), dim=1)
+
+        criterion = torch.nn.CrossEntropyLoss()
+        loss = criterion(q_values, targets)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+
+
     def replay(self):
         if len(self.memory) < self.batch_size:
             return
@@ -61,9 +88,16 @@ class DQNAgent:
         done_batch = torch.tensor(done_batch, dtype=torch.float)
 
         q_values = self.model(state_batch)
+
+        # This comes from the predictive model itself
         next_q_values = self.target_model(next_state_batch)
-        max_next_q_values = torch.max(next_q_values, dim=1)[0]
-        targets = reward_batch + self.discount_factor * max_next_q_values * (1 - done_batch)
+
+
+        max_next_q_values, _ = torch.max(next_q_values, dim=1)
+
+        targets = reward_batch + self.discount_factor * max_next_q_values * (1.0 - done_batch)
+
+        # targets = reward_batch + self.discount_factor * max_next_q_values
 
         q_values = q_values.gather(1, action_batch.unsqueeze(1)).squeeze(1)
 
