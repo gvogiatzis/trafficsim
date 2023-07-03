@@ -344,8 +344,8 @@ class TrafficControlEnv:
         """     
         route_traj = dict()
         route_waypoints=dict()
-        print("_getAllRouteIDs")
-        print(self._getAllRouteIDs())
+        # print("_getAllRouteIDs")
+        # print(self._getAllRouteIDs())
         for routeID in self._getAllRouteIDs():
             route=[]
             waypoints=[]
@@ -415,7 +415,7 @@ class TrafficControlEnv:
     def get_green_lanes_per_action(self):
         lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
         lanes = [lane.getID() for lane in lanes]
-        print(lanes)
+        # print(lanes)
         lane_to_ind = {lane:i for i, lane in enumerate(lanes)}
 
         result = np.zeros((len(lanes),self.get_num_actions()))

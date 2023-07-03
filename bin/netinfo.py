@@ -1,5 +1,6 @@
 import sys
 import os.path
+import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 if os.path.basename(sys.argv[0]) != "netinfo.py":
@@ -14,14 +15,11 @@ from types import SimpleNamespace
 
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
-state = SimpleNamespace() # state variable that will hold common set of options
-
-
-
 
 @app.command()
-def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo network to use")]):
-    print(locals())
+def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo network to use")],
+         flowmat_fname: Ann[Opt[str], typer.Option(help="If present, provides the filename where the flowmatrix for the network will be saved. The flow matrix is a structure that links centralized actions with particular lanes that are shown the green light. It is a matrix of imensions num_actions x num_lanes and contains a 1 if the particular action green-lights a particular lane, and 0 otherwise.")] = None):
+    # print(locals())
 
     from sumoenv import TrafficControlEnv
 
@@ -35,13 +33,16 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     env.reset()
 
     W = env.get_green_lanes_per_action()
-    print(W.shape)
-    # print(W)
+    print(f"flow matrix shape: {W.shape}")
     # a = env.action_to_multiaction_dict
     # for a in a:
     #     print(k)
 
     # print(f"Number of routes: {len(env.get_route_trajectories())}")
+
+    if flowmat_fname is not None:
+        print(f"Saving flow matrix in {flowmat_fname}")
+        np.savetxt(flowmat_fname, env.get_green_lanes_per_action())
     env.close()
 
 

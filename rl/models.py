@@ -26,6 +26,7 @@ class MLPnet(TrafficControlerNet):
     def forward(self, x):
         for layer in self.layers[:-1]:
             x = F.relu(layer(x))
+            # x = F.dropout(x)
         x = self.layers[-1](x)
         return x
     

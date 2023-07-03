@@ -82,13 +82,6 @@ class SimTrafficControlEnv:
         else:
             self.real_routes = None
 
-        # if self.record_tracks and not os.path.exists(f"{self.output_path}/sumo_tracks"):
-        #     os.makedirs(f"{self.output_path}/sumo_tracks")
-        #     print(f"created dir: {self.output_path}/sumo_tracks")
-        # if self.record_screenshots and not os.path.exists(f"{self.output_path}/sumo_screenshots"):
-        #     os.makedirs(f"{self.output_path}/sumo_screenshots")
-        #     print(f"created dir: {self.output_path}/sumo_screenshots")
-
         if seed is not None:
             sumo_command.extend(['--seed',str(seed)])
         else:
@@ -131,6 +124,15 @@ class SimTrafficControlEnv:
         self.sim_observation = np.random.randint(low=0,high=100,size=self.sim_observation.shape)
         return self.sim_observation
     
+
+    def create_dataset(self, dataset_size=10000):
+        dataset=[]
+        for i in range(dataset_size):
+            datapoint = np.random.randint(low=0,high=100,size=(self.get_obs_dim()))
+            target = (self.sim_observation @ self.green_lanes_per_action).argmax()
+            dataset.append((datapoint, target))
+        return dataset
+
 
     def step(self, action=None):
         # print(f"action={action}")
