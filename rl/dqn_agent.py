@@ -117,11 +117,13 @@ class DQNAgent:
 
     def load_from_file(self, fname):
         self.model = loadModel(fname)
-        self.target_model.load_state_dict(self.model.state_dict())
+        self.target_model = loadModel(fname)
+        # self.target_model.load_state_dict(self.model.state_dict())
 
     def load_from_dict(self, state_dict):
         self.model = loadModel_from_dict(state_dict)
-        self.target_model.load_state_dict(self.model.state_dict())
+        self.target_model = loadModel_from_dict(state_dict)
+        # self.target_model.load_state_dict(self.model.state_dict())
     
     def save_to_file(self, fname):
         saveModel(self.model, fname)
