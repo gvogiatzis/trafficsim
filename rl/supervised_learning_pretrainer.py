@@ -10,7 +10,9 @@ from typing import Callable
 
 
 class SupervisedLearningPretrainer:
-    def __init__(self, dataset, model, loss_fn = torch.nn.CrossEntropyLoss(), batch_size=64, learning_rate=0.0001,training_test_split = 0.8):
+    def __init__(self, dataset, model, loss_fn = torch.nn.CrossEntropyLoss(), batch_size=64, learning_rate=0.0001,training_test_split = 0.8, use_gpu=False):
+        dev = "cuda:0" if use_gpu and torch.cuda.is_available() else "cpu"
+        self.device = torch.device(dev)
         self.full_dataset = dataset
         self.model = model
         self.training_test_split = 0.8
@@ -33,6 +35,8 @@ class SupervisedLearningPretrainer:
         stats["training_acc_series"]=[]
         stats["test_acc_series"]=[]
         loss=torch.nn.CrossEntropyLoss()
+
+        self.model.to(self.device)
         for e in range(num_epochs):
             print(f"Epoch [yellow]{e+1}/{num_epochs}[/] Training: ",end="", highlight=False)
             training_loss = 0.0
@@ -41,6 +45,8 @@ class SupervisedLearningPretrainer:
             self.model.train()
             for inputs, labels in tqdm.tqdm(self.train_loader):
             # for inputs, labels in self.train_loader:
+                inputs = inputs.to(self.device)
+                labels = labels.to(self.device)
 
                 # zero the parameter gradients
                 self.optimizer.zero_grad()
@@ -54,7 +60,7 @@ class SupervisedLearningPretrainer:
                 # collect statistics
                 training_loss += r.item() * len(inputs)
                 _,output_preds = outputs.max(dim=1)
-                training_acc += sum(output_preds==labels)
+                training_acc += sum(output_preds==labels).item()
                 num_training_samples += len(inputs)
 
             training_loss /= num_training_samples
@@ -68,10 +74,12 @@ class SupervisedLearningPretrainer:
                 test_acc = 0.0
                 # for inputs, labels in tqdm.tqdm(self.test_loader):
                 for inputs, labels in self.test_loader:
+                    inputs = inputs.to(self.device)
+                    labels = labels.to(self.device)                    
                     outputs = self.model(inputs)
                     _,output_preds = outputs.max(dim=1)
-                    test_acc += sum(output_preds==labels)
-                    test_loss += loss(outputs, labels) * len(inputs)
+                    test_acc += sum(output_preds==labels).item()
+                    test_loss += loss(outputs, labels).item() * len(inputs)
                     num_test_samples += len(inputs)
  
             test_loss /= num_test_samples
@@ -83,6 +91,7 @@ class SupervisedLearningPretrainer:
             stats["test_loss_series"].append(test_loss)
             stats["training_acc_series"].append(training_acc)
             stats["test_acc_series"].append(test_acc)
+        self.model.cpu()
         return stats
             
 

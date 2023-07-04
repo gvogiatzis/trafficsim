@@ -13,7 +13,7 @@ app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_
 @app.command()
 def main(flowmat_fname: Ann[str, typer.Argument(help="The filename of the flow matrix for the traffic simulation in question. The flow matrix is a structure that links centralized actions with particular lanes that are shown the green light. It is a matrix of imensions num_actions x num_lanes and contains a 1 if the particular action green-lights a particular lane, and 0 otherwise.")],
          
-         num_epochs:Ann[Opt[int], typer.Option(help='The number of epochs to train the model')] = 50,
+         num_epochs:Ann[Opt[int], typer.Option(help='The number of epochs to train the model',default=...)]=50,
 
          dataset_size:Ann[Opt[int], typer.Option(help='The size of the artificial dataset to be used for training')] = 10000,
 
@@ -35,8 +35,6 @@ def main(flowmat_fname: Ann[str, typer.Argument(help="The filename of the flow m
     import matplotlib.pyplot as plt
 
     dataset = []
-    input_dim = 127
-    output_dim = 8
     W = np.loadtxt(flowmat_fname)
 
     output_dim, input_dim = W.shape
