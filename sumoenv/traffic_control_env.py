@@ -96,7 +96,9 @@ class TrafficControlEnv:
         self._sumo = traci.getConnection(label="default")
         self._initialize_routes()
         self._sumo.simulation.saveState('state.sumo')
-    
+        self.action_to_multiaction_dict, self.multiaction_to_action_dict = self.initialize_actions()
+        self.green_lanes_per_action = self.get_green_lanes_per_action()
+        
 
     def reset(self, seed = None, decentralized=False):
         """
@@ -123,7 +125,7 @@ class TrafficControlEnv:
         self._sumo.simulationStep()
         self.episode_step_countdown = self.episode_length
 
-        self.action_to_multiaction_dict, self.multiaction_to_action_dict = self.initialize_actions()
+        # self.action_to_multiaction_dict, self.multiaction_to_action_dict = self.initialize_actions()
         
     
         if decentralized:
@@ -197,6 +199,7 @@ class TrafficControlEnv:
                 multi_reward[tlID] = -self.get_local_hallting_number(tlID)
             return multi_state, multi_reward, done
         else:
+            # print(self.get_total_state())
             return self.get_total_state(), -self.get_total_hallting_number(), done
 
     def close(self):
@@ -249,8 +252,10 @@ class TrafficControlEnv:
         return random.randint(0, self.get_num_actions()-1)    
 
     def action_to_multiaction(self, a:int):
-        if type(a) is int:
+        if type(a) is not dict:
             return self.action_to_multiaction_dict[a]
+        else:
+            return a
 
     def multiaction_to_action(self, multi_action:dict):
         key = tuple(a for id, a in sorted(multi_action.items(), key = lambda x:x[0]))

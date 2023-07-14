@@ -90,6 +90,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
     from sumoenv import SimTrafficControlEnv, TrafficControlEnv
 
     import matplotlib.pyplot as plt
+    import numpy as np
 
     network_layers = [int(s) for s in network_layers.split("x") if s.isnumeric()]
 
@@ -99,6 +100,9 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
         env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
 
     rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq, decentralized=decentralized)
+
+    if test:
+        print(f"Average reward is: {np.mean(rewards):0.1f} \u00B1 {np.std(rewards):0.1f}")
 
     if plot_reward:
         print('plotting reward')
@@ -129,16 +133,6 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
     if not os.path.exists(f"{output_path}/models/"):
         os.makedirs(f"{output_path}/models/")
 
-    import torch
-    M = torch.tensor(env.green_lanes_per_action, dtype=torch.float)
-
-    # def target_fun(states):
-    #     r = states @ env.green_lanes_per_action
-    #     r.max
-
-    # dqn_agent.model.layers[0].weight.data=torch.tensor(100000*M.T,dtype=dqn_agent.model.layers[0].weight.dtype)
-
-
     rewards=[]
     steps_to_update = update_freq
     for e in range(num_episodes):
@@ -151,9 +145,7 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
             S = S_new # Update the current state
             A = dqn_agent.choose_action(S, deterministic = test)
 
-            # A = (S @ M).argmax())
-
-            S_new, R, done = env.step(A)
+            S_new, R, done = env.step(action=A)
 
 
             if type(R) is dict:

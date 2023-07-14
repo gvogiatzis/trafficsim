@@ -9,7 +9,7 @@ from typing import Callable
 from .models import MLPnet, loadModel, saveModel, loadModel_from_dict
 
 class DQNAgent:
-    def __init__(self, state_size, num_actions, network_layers, learning_rate=0.001, discount_factor=0.99, epsilon=1.0, epsilon_decay=0.999, epsilon_min=0.01, batch_size=32, memory_capacity=10000):
+    def __init__(self, state_size, num_actions, network_layers, learning_rate=0.001, discount_factor=0.99, epsilon=1.0, epsilon_decay=0.999, epsilon_min=0.01, batch_size=32, memory_capacity=10000, debug=False):
         self.state_size = state_size
         self.num_actions = num_actions
         self.network_layers = network_layers
@@ -24,10 +24,16 @@ class DQNAgent:
         self.model = MLPnet(state_size, *network_layers, num_actions)
         self.target_model = MLPnet(state_size, *network_layers, num_actions)
         self.target_model.load_state_dict(self.model.state_dict())
+        self.debug=debug
         
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
         # self.optimizer = optim.RMSprop(self.model.parameters(), lr=10*self.learning_rate)
         self.criterion = nn.MSELoss()
+
+        # <DEBUG>
+        if self.debug:
+            self.W = torch.tensor(np.loadtxt('flowmat.txt'), dtype=torch.float32)
+        # </DEBUG>
 
     def choose_action(self, state, deterministic=False):
         if deterministic or np.random.uniform(0, 1)>=self.epsilon:
@@ -36,6 +42,11 @@ class DQNAgent:
             with torch.no_grad():
                 q_values = self.model(state_tensor)
                 action = torch.argmax(q_values).item()
+            
+            # <DEBUG>
+            if self.debug:
+                action = np.argsort((state_tensor.squeeze() @ self.W).numpy())[-1]
+            # </DEBUG>
         else:
             # Explore: choose a random action
             action = random.randint(0, self.num_actions - 1)
