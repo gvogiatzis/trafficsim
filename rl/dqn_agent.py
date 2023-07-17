@@ -83,6 +83,7 @@ class DQNAgent:
 
 
     def replay(self):
+        # print("in replay")
         if len(self.memory) < self.batch_size:
             return
 
@@ -98,18 +99,21 @@ class DQNAgent:
         next_state_batch = torch.tensor(np.array(next_state_batch), dtype=torch.float)
         done_batch = torch.tensor(done_batch, dtype=torch.float)
 
-        q_values = self.model(state_batch)
+        # <test>
+        next_q_values = self.model(next_state_batch)
+        next_q_values_target = self.target_model(next_state_batch)
+        _, best_next_actions = torch.max(next_q_values, dim=1)
+        max_next_q_values_target = next_q_values_target.gather(1, best_next_actions.unsqueeze(1)).squeeze(1)
+        targets = reward_batch + self.discount_factor * max_next_q_values_target * (1.0 - done_batch)
+        # </test>
 
-        # This comes from the predictive model itself
-        next_q_values = self.target_model(next_state_batch)
-
-
-        max_next_q_values, _ = torch.max(next_q_values, dim=1)
-
-        targets = reward_batch + self.discount_factor * max_next_q_values * (1.0 - done_batch)
+        # # This comes from the predictive model itself
+        # next_q_values = self.target_model(next_state_batch)
+        # max_next_q_values, _ = torch.max(next_q_values, dim=1)
+        # targets = reward_batch + self.discount_factor * max_next_q_values * (1.0 - done_batch)
 
         # targets = reward_batch + self.discount_factor * max_next_q_values
-
+        q_values = self.model(state_batch)
         q_values = q_values.gather(1, action_batch.unsqueeze(1)).squeeze(1)
 
         loss = self.criterion(q_values, targets)

@@ -62,7 +62,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
           = 0.1,
 
          batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
-          = 128,
+          = 32,
 
          replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
           = 500000,
@@ -157,6 +157,9 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
                 dqn_agent.remember(S, A, R, S_new, done)  # Remember the experience
                 dqn_agent.replay()  # Train the agent by replaying experiences
                 # dqn_agent.replay_supervised(target_fun= lambda x: x @ M)
+
+                # dqn_agent.decay_epsilon()
+
 
                 steps_to_update -= 1
                 if steps_to_update == 0:
