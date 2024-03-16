@@ -79,27 +79,26 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False,
          
-         decentralized: Ann[Opt[bool], typer.Option(help="If set, uses separate RL agents on each junction, trained independently.")] = False,
-
-         pretraining: Ann[Opt[bool], typer.Option(help="If set, uses a simplified simulation traffic environment.")] = False):
+         agent_lights_file:Ann[Opt[str], typer.Option(help='filename consisting of the TLs that are assigned to each RL agent. Each line corresponds to a different agent consists of a comma-separated list of TL ids to be controlled by that agent. A file with N lines corresponds to N agents. If not given then a single agent controlling all TLs is created.')] = None):
 
 
     if out_model_fname is None:
         out_model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
 
-    from sumoenv import SimTrafficControlEnv, TrafficControlEnv
+    from sumoenv import TrafficControlEnv
 
     import matplotlib.pyplot as plt
     import numpy as np
 
     network_layers = [int(s) for s in network_layers.split("x") if s.isnumeric()]
 
-    if pretraining:
-        env = SimTrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
-    else:
-        env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action )
 
-    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq, decentralized=decentralized)
+
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action,agent_lights_file=agent_lights_file)
+
+
+
+    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq)
 
     if test:
         print(f"Average reward is: {np.mean(rewards):0.1f} \u00B1 {np.std(rewards):0.1f}")
@@ -113,19 +112,15 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,decentralized):
-    from rl import DQNAgent, DQNEnsemble
+def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq):
+    from rl import DQNEnsemble
 
+    schema = env.get_action_breakdown()
+    print(schema)
+    print(env.schema)
+    dqn_agent = DQNEnsemble(schema=schema, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
 
-    if decentralized:
-        schema = env.get_action_breakdown()
-        dqn_agent = DQNEnsemble(schema=schema, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
-        print(f"We are using {len(dqn_agent.agents)} decentralized agents")
-    else:
-        num_actions = env.get_num_actions()
-        state_size = env.get_obs_dim()
-        dqn_agent = DQNAgent(state_size=state_size, num_actions=num_actions,network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
-        print(f"We are using a single centralized agent")
+    print(f"We are using {len(dqn_agent.agents)} agents")
 
     if in_model_fname is not None:
         dqn_agent.load_from_file(in_model_fname)
@@ -137,7 +132,7 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
     steps_to_update = update_freq
     for e in range(num_episodes):
         done = False
-        S_new = env.reset(decentralized=decentralized)
+        S_new = env.reset()
 
         tot_reward=0
 
@@ -147,11 +142,8 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
 
             S_new, R, done = env.step(action=A)
 
-
-            if type(R) is dict:
-                tot_reward += -env.get_total_hallting_number()  # Accumulate the reward (works for decentralized too)
-            else:
-                tot_reward += R
+            tot_R = sum(r for agID,r in R.items())
+            tot_reward += tot_R  
 
             if not test:
                 dqn_agent.remember(S, A, R, S_new, done)  # Remember the experience
