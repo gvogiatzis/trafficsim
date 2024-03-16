@@ -340,11 +340,7 @@ class TrafficControlEnv:
             minischema[agID] = self.schema[agID]["dims"]
         return minischema
     
-    # def get_obs_dim(self):
-    #     """ Returns the dimensionality of the observation vector
-    #     """
-    #     return sum(len(e.getLanes()) for e in self._net.getEdges())
-
+ 
 
     def set_all_lights(self, state):
         """
@@ -355,49 +351,6 @@ class TrafficControlEnv:
             n = len(self._sumo.trafficlight.getControlledLanes(tlID))
             self._sumo.trafficlight.setRedYellowGreenState(tlID, state * n)
 
-    # def get_total_state(self):
-    #     """
-    #     This gets the lane observations for the entire traffic network
-    #     """        
-    #     # lanes = self._sumo.lane.getIDList() # This inludes :xyz internals
-    #     lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
-    #     result = []
-    #     for lane in lanes:
-    #         # result.append(self._sumo.lane.getLastStepVehicleNumber(lane.getID()))
-    #         result.append(self._sumo.lane.getLastStepHaltingNumber(lane.getID()))
-    #     if self.state_wrapper is not None:
-    #         return self.state_wrapper(np.array(result))
-    #     else:
-    #         return np.array(result)
-        
-    # def get_local_state(self, tlID):
-    #     """
-    #     This gets the lane observations for all the lanes controlled by this traffic light
-    #     """
-    #     lanes = self._sumo.trafficlight.getControlledLanes(tlID)
-    #     result=[]
-    #     for lane in lanes:
-    #         result.append(self._sumo.lane.getLastStepHaltingNumber(lane))
-    #     if self.state_wrapper is not None:
-    #         return self.state_wrapper(np.array(result))
-    #     else:
-    #         return np.array(result)
-
-    # def get_total_hallting_number(self):
-    #     """
-    #     This is the total number of cars stopping in the entire network.
-    #     """
-    #     lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
-    #     r = sum(self._sumo.lane.getLastStepHaltingNumber(lane.getID()) for lane in lanes)
-    #     return r
-
-    # def get_local_hallting_number(self, tlID):
-    #     """
-    #     This is the total number of cars stopping in this traffic light
-    #     """
-    #     lanes = self._sumo.trafficlight.getControlledLanes(tlID)
-    #     r = sum(self._sumo.lane.getLastStepHaltingNumber(lane) for lane in lanes)
-    #     return r
 
     def _getCurrentTotalTimeLoss(self):
         dt = self._sumo.simulation.getDeltaT()
@@ -484,68 +437,6 @@ class TrafficControlEnv:
                 self._sumo.vehicle.setLength(vehID, self.car_length)
                 self._sumo.vehicle.setWidth(vehID, self.car_length/3.5)
                 self._vehcnt +=1
-
-    # def get_green_lanes_per_action(self):
-    #     lanes = sum([e.getLanes() for e in self._net.getEdges()],[])
-    #     lanes = [lane.getID() for lane in lanes]
-    #     # print(lanes)
-    #     lane_to_ind = {lane:i for i, lane in enumerate(lanes)}
-
-    #     result = np.zeros((len(lanes),self.get_num_actions()))
-
-    #     for act in range(self.get_num_actions()):
-    #         ma = self.action_to_multiaction(act)
-    #         for tls_id, a in ma.items():
-    #             logic = self._sumo.trafficlight.getAllProgramLogics(tls_id)[0]
-    #             controlled_lanes = self._sumo.trafficlight.getControlledLanes(tls_id)
-    #             phases = logic.getPhases()
-    #             for lane, s in zip(controlled_lanes,phases[a].state):
-    #                 if s in ['g','G']:
-    #                     row = lane_to_ind[lane]
-    #                     result[row,act] = 1.0
-    #     return result
-
-    # def _get_TLS_demand_breakdown(self, tls_id):
-    #     logic = self._sumo.trafficlight.getAllProgramLogics(tls_id)[0]
-    #     lanes = self._sumo.trafficlight.getControlledLanes(tls_id)
-    #     phases = logic.getPhases()
-    #     demand = []
-    #     for phase in phases:
-    #         phasedemand=0
-    #         for lane, s in zip(lanes,phase.state):
-    #             if s in ['g','G']:
-    #                 phasedemand += self._sumo.lane.getLastStepVehicleNumber(lane)
-    #                 # phasedemand += self._sumo.lane.getLastStepOccupancy(lane)
-    #         demand.append(phasedemand) 
-    #     return demand
-
-
-    # def initialize_actions(self):
-    #     """
-    #     This initializes dictionary mappings from a centralized action to a multi-action dict and vice versa.
-    #     """
-    #     action_list = []
-    #     ma_to_a = dict()
-    #     for tl in self._sumo.trafficlight.getIDList():
-    #         logic = self._sumo.trafficlight.getAllProgramLogics(tl)[0]
-    #         nphases = len(logic.getPhases())
-    #         if len(action_list)==0:
-    #             action_list = [[(tl, n)] for n in range(nphases)]
-    #         else:
-    #             action_list = [[(tl,n)] + d for n in range(nphases) for d in action_list]
-    #     a_to_pha = {i:{x:y for x,y in r}    for i,r in enumerate(action_list)}
-    #     ma_to_a = {tuple(y for x,y in sorted(r,key=lambda x:x[0])):i for i,r in enumerate(action_list)}
-    #     return a_to_pha, ma_to_a
-
-    # def _applyAction(self, action: int):
-    #     """ Applies a traffic control action to the traffic lights
-    #     """
-    #     if len(self.action_to_multiaction_dict)>0:
-    #         for (tl, a) in self.action_to_multiaction_dict[action]:
-    #             self._sumo.trafficlight.setPhase(tl,a)
-
-
-
 
     def _getAllRouteIDs(self):
         return [s for s in self._sumo.route.getIDList() if s[0]!='!']
