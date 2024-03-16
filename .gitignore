@@ -6,3 +6,4 @@ state.sumo
 script*
 tmp
 misc/
+*.txt
