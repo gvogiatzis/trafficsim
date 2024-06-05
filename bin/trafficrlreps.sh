@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/zsh 
 rm *.csv
 touch cols.csv
 
@@ -12,5 +12,5 @@ do
 	fi	
 	mv tmp2.csv cols.csv
 	rm tmp1.csv
-	python utils/pltavg.py -s 10 -t "Run $i of 10" -x "episode" -y "reward" < cols.csv | /Users/george/.iterm2/imgcat -W 50%
+	python utils/pltavg.py -s 10 -t "Run $i of 10" -x "episode" -y "reward" < cols.csv | ${HOME}/.iterm2/imgcat -W 50%
 done
