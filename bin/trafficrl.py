@@ -80,7 +80,9 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False,
          
          agent_lights_file:Ann[Opt[str], typer.Option(help='filename consisting of the TLs that are assigned to each RL agent. Each line corresponds to a different agent consists of a comma-separated list of TL ids to be controlled by that agent. A file with N lines corresponds to N agents. If not given then a single agent controlling all TLs is created.')] = None):
-
+    """
+    This is the main function of the traffic rl script. It does all the command line processing.
+    """
 
     if out_model_fname is None:
         out_model_fname = f"{os.path.splitext(os.path.basename(net_fname))[0]}.pt"
