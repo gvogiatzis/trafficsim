@@ -63,20 +63,22 @@ class TrafficControlEnv:
         self.greedy_action = greedy_action
         self.random_action=random_action
 
+        # prepare sumo command
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
-        # sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log'])
         sumo_command.extend(['-n',self._net_fname,'--start','--quit-on-end','--no-warnings','--no-step-log', '--step-length', str(step_length)])
 
+        # if in gui mode, use gui config if available (used to set viewpoints car sizes etc)
         if self.use_gui and self.gui_config_file is not None:
             sumo_command.extend(['-g',self.gui_config_file])
 
+        # used if we need to restrict to specific routes as obtained by routegui
         if self.real_routes_file is not None:
             with open(self.real_routes_file, 'rb') as f:
-                # self.real_routes = list(pickle.load(f)["trajectories"].keys())
                 self.real_routes = pickle.load(f)["active_routes"]
         else:
             self.real_routes = None
 
+        # set book keeping information for logging tracks and screenshots (used for image generation)
         if self.record_tracks and not os.path.exists(f"{self.output_path}/sumo_tracks"):
             os.makedirs(f"{self.output_path}/sumo_tracks")
             print(f"created dir: {self.output_path}/sumo_tracks")
@@ -84,6 +86,7 @@ class TrafficControlEnv:
             os.makedirs(f"{self.output_path}/sumo_screenshots")
             print(f"created dir: {self.output_path}/sumo_screenshots")
 
+        # sort out random seeds for repeatable experiments
         if seed is not None:
             sumo_command.extend(['--seed',str(seed)])
         else:
