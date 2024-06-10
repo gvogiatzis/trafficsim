@@ -64,7 +64,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
           = 32,
 
-         replay_buffer_size: Ann[Opt[int], typer.Option(help="If set, will plot the reward vs episode number at the end of all episodes.")] 
+         replay_buffer_size: Ann[Opt[int], typer.Option(help="The size of the replay buffer used by each DQNAgent.")] 
           = 500000,
           
          update_freq: Ann[Opt[int], typer.Option(help="This is the number of timesteps between model updates. ")] = 2,

@@ -98,9 +98,15 @@ class TrafficControlEnv:
         self._initialize_routes()
         self._sumo.simulation.saveState('state.sumo')
 
+        # compute schema that maps combinations of actions into actuall traffic lights for
+        # the multiple agents
         self.schema = self._compute_schema(agent_lights_file)
 
     def _compute_schema(self, agent_lights_file):
+        # agent_lights_file is a text file containing one line per agent. In each line
+        # are the traffic light ids that are to be controlled by each agent.
+        # if no file is present we assume a single agent that simultaneously controls all
+        # traffic lights 
         agent_tls = dict()
         ag_id = 0
         if agent_lights_file is not None:
@@ -111,6 +117,14 @@ class TrafficControlEnv:
         else:
             agent_tls[ag_id]=self._sumo.trafficlight.getIDList()
 
+        # 'schema' is a dictionary that for maps an agentID to a set of objects:
+        # controlledTLs: is a list of all the traffic lights that are controlled by that agent
+        # controlledlanes: is a list of all the lanes that are controlled by that agent
+        # a_to_pha: is a dictionary that maps an actionID to a trafficlightID->phase dictionary
+        # ma_to_a: maps a tuple of phase combinations to the action they correspond to- not used anywhere-not tested!!!
+        # dims: a (num_lanes, num_phases) tuple. The number of lanes is the size of the observation space and num_phases
+        #       is the number of possible actions that this agent can take. It is the input and output dimension of
+        #       the Neural Network that represents policy for that agent.
         schema = dict()
 
         for aID, tlIDs in agent_tls.items():
@@ -198,6 +212,8 @@ class TrafficControlEnv:
             elif self.greedy_action:
                 action = self._choose_greedy_action()
 
+        # multi_state0, multi_reward0 = self._get_states_and_rewards()
+
         self._applyMultiaction(action)
 
         for _ in range(self.sumo_timestep):
@@ -214,6 +230,17 @@ class TrafficControlEnv:
 
         done = self.episode_step_countdown==0
         multi_state, multi_reward = self._get_states_and_rewards()
+
+        # for agID in multi_reward.keys():
+        #     multi_reward[agID] = multi_reward0[agID] - multi_reward[agID]
+ 
+        # greedy_action = self._choose_greedy_action()
+        # for agID in multi_reward.keys():
+        #     a = action[agID]
+        #     ga = greedy_action[agID]
+        #     a_to_pha = self.schema[agID]["a_to_pha"]
+        #     multi_reward[agID] = sum( a_to_pha[a][tl]==pha for tl,pha in a_to_pha[ga].items() )/len(a_to_pha[ga])
+
         return multi_state, multi_reward, done
 
     def _choose_random_action(self):
@@ -287,10 +314,13 @@ class TrafficControlEnv:
             lanes = self.schema[agID]["controlledlanes"]
             for lane in lanes:
                 multi_state[agID].append(self._sumo.lane.getLastStepHaltingNumber(lane))
+                # multi_state[agID].append(self._sumo.lane.getLastStepOccupancy(lane))
             if self.state_wrapper is not None:
                 multi_state[agID] = self.state_wrapper(multi_state[agID])
 
             multi_reward[agID] = -sum(self._sumo.lane.getLastStepHaltingNumber(lane) for lane in lanes)
+            # multi_reward[agID] = sum(1.0-self._sumo.lane.getLastStepOccupancy(lane) for lane in lanes)
+            # multi_reward[agID] = sum(self._sumo.lane.getLastStepMeanSpeed(lane) for lane in lanes)
 
         return multi_state, multi_reward
 

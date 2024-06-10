@@ -25,6 +25,8 @@ class DQNAgent:
         self.target_model = MLPnet(state_size, *network_layers, num_actions)
         self.target_model.load_state_dict(self.model.state_dict())
         self.debug=debug
+
+        # self.debug_buf_size=100
         
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
         # self.optimizer = optim.RMSprop(self.model.parameters(), lr=10*self.learning_rate)
@@ -34,6 +36,8 @@ class DQNAgent:
         if self.debug:
             self.W = torch.tensor(np.loadtxt('flowmat.txt'), dtype=torch.float32)
         # </DEBUG>
+
+        
 
     def choose_action(self, state, deterministic=False):
         if deterministic or np.random.uniform(0, 1)>=self.epsilon:
@@ -54,6 +58,9 @@ class DQNAgent:
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
+        # if len(self.memory)>=self.debug_buf_size:
+        #     self.debug_buf_size+=100
+        #     print(f"Buffer size is {len(self.memory)}")
         if len(self.memory) > self.memory_capacity:
             self.memory.pop(0)
 
