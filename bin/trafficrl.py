@@ -1,16 +1,17 @@
+#!/usr/bin/env python
 import sys
 import os.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-if os.path.basename(sys.argv[0]) != "trafficrl.py":
-    print("running from jupyter")
-    sys.argv=["trafficrl.py", "train", "--net", "sumo_data/TwoJunction.net.xml"]
+# if os.path.basename(sys.argv[0]) != "trafficrl.py":
+#     print("running from jupyter")
+#     sys.argv=["trafficrl.py", "train", "--net", "sumo_data/TwoJunction.net.xml"]
 
 
 import typer
 from typing import Optional as Opt, List, Tuple
 from typing_extensions import Annotated as Ann
-
+from random import random
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=True)
 
@@ -52,14 +53,19 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
          record_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
 
          greedy_action:Ann[Opt[bool], typer.Option(help="If set, will apply action that shows the green light to the maximum number of cars. This is a useful benchmark. If used in conjunction with training, will act as imitation RL where the agent is shown only the greedy actions being applied.")] = False,
+         
+         greedy_prob:Ann[Opt[float], typer.Option(help="A number between 0.0 and 1.0.  The probability of choosing the greedy action in each timestep.")] = 0.0,
 
          random_action:Ann[Opt[bool], typer.Option(help="If set, will apply a random action. This is a useful benchmark. If used in conjunction with training, will act as imitation RL where the agent is shown only the random actions being applied. Effectively equivalent to lambda = 0.")] = False,
 
          gamma: Ann[Opt[float], typer.Option(help='the discount factor for training models')] 
           = 0.99,
  
-         epsilon: Ann[Opt[float], typer.Option(help="The probability of choosing a random action in each timestep. Increase to help with exploration at the expense of worse performance.")] 
+         epsilon: Ann[Opt[float], typer.Option(help="The initial probability of choosing a random action in each timestep. Increase to help with exploration at the expense of worse performance. This will decay geometrically until it reaches epsilon_final.")] 
           = 0.1,
+
+         epsilon_final: Ann[Opt[float], typer.Option(help="The final probability of choosing a random action in each timestep. Epsilon keeps decaying geometrically until it reaches this value at the final episode.")] 
+          = 0.01,
 
          batch_size: Ann[Opt[int], typer.Option(help='the sample batch size for optimizing the models')] 
           = 32,
@@ -100,7 +106,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq)
+    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, epsilon_final=epsilon_final, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq,greedy_prob=greedy_prob)
 
     if test:
         print(f"Average reward is: {np.mean(rewards):0.1f} \u00B1 {np.std(rewards):0.1f}")
@@ -114,13 +120,13 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq):
+def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, epsilon_final, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,greedy_prob):
     from rl import DQNEnsemble
 
-    schema = env.get_action_breakdown()
-    print(schema)
-    print(env.schema)
-    dqn_agent = DQNEnsemble(schema=schema, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, batch_size=batch_size, memory_capacity=replay_buffer_size)
+    mini_schema = env.get_action_breakdown()
+    # print(mini_schema)
+    # print(env.schema)
+    dqn_agent = DQNEnsemble(schema=mini_schema, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, epsilon_decay=(epsilon_final/epsilon)**(1/(num_episodes-1)),batch_size=batch_size, memory_capacity=replay_buffer_size)
 
     print(f"We are using {len(dqn_agent.agents)} agents")
 
@@ -140,8 +146,11 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
 
         while not done:
             S = S_new # Update the current state
-            A = dqn_agent.choose_action(S, deterministic = test)
 
+            if random()<=greedy_prob:
+                A = env.choose_greedy_action()
+            else:
+                A = dqn_agent.choose_action(S, deterministic = test)                
             S_new, R, done = env.step(action=A)
 
             tot_R = sum(r for agID,r in R.items())
@@ -152,13 +161,13 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
                 dqn_agent.replay()  # Train the agent by replaying experiences
                 # dqn_agent.replay_supervised(target_fun= lambda x: x @ M)
 
-                # dqn_agent.decay_epsilon()
-
-
                 steps_to_update -= 1
                 if steps_to_update == 0:
                     dqn_agent.update_target_model()
                     steps_to_update = update_freq
+                    
+        dqn_agent.decay_epsilon()
+        # print(f"epsilon = {dqn_agent.agents[0].epsilon}")
             
         rewards.append(tot_reward)
         print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')

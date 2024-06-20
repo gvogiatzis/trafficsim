@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import sumolib
 import traci
 from typing import Dict, Tuple
+from itertools import product
 
 import random, pickle
 
@@ -120,8 +121,7 @@ class TrafficControlEnv:
         # 'schema' is a dictionary that for maps an agentID to a set of objects:
         # controlledTLs: is a list of all the traffic lights that are controlled by that agent
         # controlledlanes: is a list of all the lanes that are controlled by that agent
-        # a_to_pha: is a dictionary that maps an actionID to a trafficlightID->phase dictionary
-        # ma_to_a: maps a tuple of phase combinations to the action they correspond to- not used anywhere-not tested!!!
+        # a_to_tl_to_pha: is a dictionary that maps an actionID to a trafficlightID->phase dictionary
         # dims: a (num_lanes, num_phases) tuple. The number of lanes is the size of the observation space and num_phases
         #       is the number of possible actions that this agent can take. It is the input and output dimension of
         #       the Neural Network that represents policy for that agent.
@@ -132,26 +132,20 @@ class TrafficControlEnv:
             schema[aID]["controlledlanes"]=[]
             num_lanes = 0
             num_phases = 1
-            action_list=[]
+            tl_pha_lists=[]
             for tlID in tlIDs:
                 logic = self._sumo.trafficlight.getAllProgramLogics(tlID)[0]
                 lanes = self._sumo.trafficlight.getControlledLanes(tlID)
-                # num_phases grows multiplicatively-> it is the number of possible actions that can be taken by that agent
                 nphases = len(logic.getPhases())
-                if len(action_list)==0:
-                    action_list = [[(tlID, n)] for n in range(nphases)]
-                else:
-                    action_list = [[(tlID,n)] + d for n in range(nphases) for d in action_list]
-                num_phases *= nphases
-
-                # num_lanes grows additively-> it is the number of observations given to each agent
+                tl_pha_lists.append([(tlID, n) for n in range(nphases)])           
                 num_lanes += len(lanes)
                 schema[aID]["controlledlanes"] += lanes
-            a_to_pha = {i:{x:y for x,y in r}    for i,r in enumerate(action_list)}
-            ma_to_a = {tuple(y for x,y in sorted(r,key=lambda x:x[0])):i for i,r in enumerate(action_list)}
-            schema[aID]["a_to_pha"] = a_to_pha
-            schema[aID]["ma_to_a"] = ma_to_a            
-            schema[aID]["dims"] = (num_lanes, num_phases)
+            tl_pha_combinations = list(product(*tl_pha_lists))
+            num_actions = len(tl_pha_combinations)
+            a_to_tl_to_pha = {a:{tl:pha for tl,pha in tl_pha}    for a,tl_pha in enumerate(tl_pha_combinations)}
+
+            schema[aID]["a_to_tl_to_pha"] = a_to_tl_to_pha
+            schema[aID]["dims"] = (num_lanes, num_actions)
 
         return schema        
 
@@ -210,9 +204,7 @@ class TrafficControlEnv:
             if self.random_action or action is None:
                 action = self._choose_random_action()
             elif self.greedy_action:
-                action = self._choose_greedy_action()
-
-        # multi_state0, multi_reward0 = self._get_states_and_rewards()
+                action = self.choose_greedy_action()
 
         self._applyMultiaction(action)
 
@@ -231,16 +223,6 @@ class TrafficControlEnv:
         done = self.episode_step_countdown==0
         multi_state, multi_reward = self._get_states_and_rewards()
 
-        # for agID in multi_reward.keys():
-        #     multi_reward[agID] = multi_reward0[agID] - multi_reward[agID]
- 
-        # greedy_action = self._choose_greedy_action()
-        # for agID in multi_reward.keys():
-        #     a = action[agID]
-        #     ga = greedy_action[agID]
-        #     a_to_pha = self.schema[agID]["a_to_pha"]
-        #     multi_reward[agID] = sum( a_to_pha[a][tl]==pha for tl,pha in a_to_pha[ga].items() )/len(a_to_pha[ga])
-
         return multi_state, multi_reward, done
 
     def _choose_random_action(self):
@@ -250,7 +232,7 @@ class TrafficControlEnv:
             multi_action[agID]=random.randint(0, num_actions-1)
         return multi_action
 
-    def _choose_greedy_action(self):
+    def choose_greedy_action(self):
         multi_action = dict()
         for agID in self.schema.keys():
             tlIDs = self.schema[agID]["controlledTLs"]            
@@ -258,10 +240,10 @@ class TrafficControlEnv:
             tl_demand = {tl:self._get_TLS_demand_breakdown(tl) for tl in tlIDs}
 
             # finding the best action for that agend
-            a_to_pha = self.schema[agID]["a_to_pha"] # mapping from agent action to individual TL phases
+            a_to_tl_to_pha = self.schema[agID]["a_to_tl_to_pha"] # mapping from agent action to individual TL phases
             best_action = -1
             highest_demand=-1
-            for a, pha in a_to_pha.items():
+            for a, pha in a_to_tl_to_pha.items():
                 demand = sum(tl_demand[tl][pha] for tl,pha in pha.items())
                 if demand>highest_demand:
                     highest_demand = demand
@@ -301,11 +283,11 @@ class TrafficControlEnv:
         """ Applies a traffic control multi_action dict to the traffic lights
         """
         for agID, action in multi_action.items():
-            agent_multi_action = self.schema[agID]["a_to_pha"][action]
-            for tlID,a in agent_multi_action.items():
-                self._sumo.trafficlight.setPhase(tlID,a)
+            tl_to_phase = self.schema[agID]["a_to_tl_to_pha"][action]
+            for tlID,pha in tl_to_phase.items():
+                self._sumo.trafficlight.setPhase(tlID,pha)
 
-    def _get_states_and_rewards(self):
+    def _get_states_and_rewards(self,action=None):
         multi_state:Dict[int, np.ndarray] = dict()
         multi_reward:Dict[int, float] = dict()
 

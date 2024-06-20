@@ -133,9 +133,11 @@ class DQNAgent:
         self.target_model.load_state_dict(self.model.state_dict())
 
     def decay_epsilon(self):
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
-            self.epsilon = max(self.epsilon, self.epsilon_min)
+        self.epsilon *= self.epsilon_decay
+        
+        # if self.epsilon > self.epsilon_min:
+        #     self.epsilon *= self.epsilon_decay
+        #     self.epsilon = max(self.epsilon, self.epsilon_min)
 
     def load_from_file(self, fname):
         self.model = loadModel(fname)

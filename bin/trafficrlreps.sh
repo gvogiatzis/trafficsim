@@ -1,5 +1,5 @@
 #!/bin/zsh 
-rm *.csv
+rm -f cols.csv
 touch cols.csv
 
 for i in {1..10}
