@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import sumolib
 import traci
 from typing import Dict, Tuple
-from itertools import product
+from itertools import product, chain
 
 import random, pickle
 
@@ -63,6 +63,13 @@ class TrafficControlEnv:
         self.real_routes_file = real_routes_file
         self.greedy_action = greedy_action
         self.random_action=random_action
+
+
+        # set self.simple_state to True if you want a simplified state that already computes 
+        # a nice feature (sum of all cars halting that will be getting a green)
+        # for each action. 
+        self.simple_state = True
+
 
         # prepare sumo command
         sumo_command=['sumo-gui'] if self.use_gui else ['sumo']
@@ -122,6 +129,7 @@ class TrafficControlEnv:
         # controlledTLs: is a list of all the traffic lights that are controlled by that agent
         # controlledlanes: is a list of all the lanes that are controlled by that agent
         # a_to_tl_to_pha: is a dictionary that maps an actionID to a trafficlightID->phase dictionary
+        # a_to_green_lanes: is a dictionary that maps an actionID to a list of lanes that will get a green under that action
         # dims: a (num_lanes, num_phases) tuple. The number of lanes is the size of the observation space and num_phases
         #       is the number of possible actions that this agent can take. It is the input and output dimension of
         #       the Neural Network that represents policy for that agent.
@@ -130,9 +138,18 @@ class TrafficControlEnv:
         for aID, tlIDs in agent_tls.items():
             schema[aID]={"controlledTLs":tlIDs}
             schema[aID]["controlledlanes"]=[]
+          
+            # computing the mapping between traffic light and phase for each of the 
+            # available actions.
             num_lanes = 0
             num_phases = 1
             tl_pha_lists=[]
+            # tl_pha_lists is a list of lists as follows:
+            # [[(tl1,1),...,(tl1,nphases_for_tl1)],
+            # [(tl2,1),...,(tl2,nphases_for_tl2)],...]
+            # In the end we will compute a cartesian product of all those lists
+            # and the result will be stored in tl_pha_combinations
+            # Then it's a simple case of converting that into an action->tl->phaseID mapping
             for tlID in tlIDs:
                 logic = self._sumo.trafficlight.getAllProgramLogics(tlID)[0]
                 lanes = self._sumo.trafficlight.getControlledLanes(tlID)
@@ -144,8 +161,28 @@ class TrafficControlEnv:
             num_actions = len(tl_pha_combinations)
             a_to_tl_to_pha = {a:{tl:pha for tl,pha in tl_pha}    for a,tl_pha in enumerate(tl_pha_combinations)}
 
+            # computing green lanes corresponding to each action
+            a_to_green_lanes=dict()
+            for a in a_to_tl_to_pha.keys():
+                a_to_green_lanes[a]=[]
+                for tl,pha in a_to_tl_to_pha[a].items():
+                    pha_to_greenlanes = self._get_green_lanes_per_phase(tl)
+                    a_to_green_lanes[a].extend(pha_to_greenlanes[pha])
+
             schema[aID]["a_to_tl_to_pha"] = a_to_tl_to_pha
-            schema[aID]["dims"] = (num_lanes, num_actions)
+            schema[aID]["a_to_green_lanes"]=a_to_green_lanes
+
+            # set self.simple_state to True if you want a simplified state that already computes 
+            # a nice feature (sum of all cars halting that will be getting a green)
+            # for each action. 
+            if self.simple_state:
+                schema[aID]["dims"] = (num_actions, num_actions)
+            else:
+                schema[aID]["dims"] = (num_lanes, num_actions)
+
+            # print(schema[aID]["dims"])
+            # for a, lanes in schema[aID]["a_to_green_lanes"].items():
+            #     print(f"action {a}, # green lanes={len(lanes)}")
 
         return schema        
 
@@ -251,6 +288,34 @@ class TrafficControlEnv:
             multi_action[agID]=best_action
         return multi_action
 
+
+    def _get_green_lanes_per_phase(self, tls_id):
+        ''' 
+        Returns a dictionary that maps each phase to the list of lanes that turn green in a traffic light
+
+        Parameters
+        ----------
+        tls_id:   str
+            a traffic light ID
+        
+        Returns
+        -------
+        pha_to_green_lanes: int->[str]
+
+        an array D such that if p is a phase of the traffic light, D[p] = the total demand waiting to be released if we enable phase p. 
+        '''
+        logic = self._sumo.trafficlight.getAllProgramLogics(tls_id)[0]
+        lanes = self._sumo.trafficlight.getControlledLanes(tls_id)
+        phases = logic.getPhases()
+        pha_to_green_lanes=dict()
+        for phase_id,phase in enumerate(phases):# phases are whole objects- we just need their index
+            pha_to_green_lanes[phase_id]=[]
+            for lane, s in zip(lanes,phase.state):
+                if s in ['g','G']:
+                    pha_to_green_lanes[phase_id].append(lane)
+        return pha_to_green_lanes
+
+
     def _get_TLS_demand_breakdown(self, tls_id):
         ''' 
         Returns a breakdown of current demand for each phase.
@@ -287,16 +352,26 @@ class TrafficControlEnv:
             for tlID,pha in tl_to_phase.items():
                 self._sumo.trafficlight.setPhase(tlID,pha)
 
-    def _get_states_and_rewards(self,action=None):
+    def _get_states_and_rewards(self):
         multi_state:Dict[int, np.ndarray] = dict()
         multi_reward:Dict[int, float] = dict()
 
         for agID in self.schema.keys():
             multi_state[agID] = []
             lanes = self.schema[agID]["controlledlanes"]
-            for lane in lanes:
-                multi_state[agID].append(self._sumo.lane.getLastStepHaltingNumber(lane))
-                # multi_state[agID].append(self._sumo.lane.getLastStepOccupancy(lane))
+            
+            # set self.simple_state to True if you want a simplified state that already computes 
+            # a nice feature (sum of all cars halting that will be getting a green)
+            # for each action. 
+            if self.simple_state:
+                a_to_green_lanes = self.schema[agID]["a_to_green_lanes"]
+                for a, green_lanes in a_to_green_lanes.items():
+                    multi_state[agID].append(sum(self._sumo.lane.getLastStepHaltingNumber(lane) for lane in green_lanes))  
+            else:
+                for lane in lanes:
+                    multi_state[agID].append(self._sumo.lane.getLastStepHaltingNumber(lane))
+                    # multi_state[agID].append(self._sumo.lane.getLastStepOccupancy(lane))
+ 
             if self.state_wrapper is not None:
                 multi_state[agID] = self.state_wrapper(multi_state[agID])
 

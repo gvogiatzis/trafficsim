@@ -52,7 +52,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          record_tracks:Ann[Opt[bool], typer.Option(help="If set, will save sumo vehicle tracks during each simulation step in [OUTPUT_PATH]/sumo_tracks.")] = False,
 
-         greedy_action:Ann[Opt[bool], typer.Option(help="If set, will apply action that shows the green light to the maximum number of cars. This is a useful benchmark. If used in conjunction with training, will act as imitation RL where the agent is shown only the greedy actions being applied.")] = False,
+        #  greedy_action:Ann[Opt[bool], typer.Option(help="If set, will apply action that shows the green light to the maximum number of cars. This is a useful benchmark. If used in conjunction with training, will act as imitation RL where the agent is shown only the greedy actions being applied.")] = False,
          
          greedy_prob:Ann[Opt[float], typer.Option(help="A number between 0.0 and 1.0.  The probability of choosing the greedy action in each timestep.")] = 0.0,
 
@@ -102,7 +102,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, greedy_action=greedy_action,random_action=random_action,agent_lights_file=agent_lights_file)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, random_action=random_action,agent_lights_file=agent_lights_file)
 
 
 
