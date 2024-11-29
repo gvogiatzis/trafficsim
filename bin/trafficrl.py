@@ -85,7 +85,8 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
          test: Ann[Opt[bool], typer.Option(help="If set, performs only testing of a pre-trained agent model.")] = False,
          
-         agent_lights_file:Ann[Opt[str], typer.Option(help='filename consisting of the TLs that are assigned to each RL agent. Each line corresponds to a different agent consists of a comma-separated list of TL ids to be controlled by that agent. A file with N lines corresponds to N agents. If not given then a single agent controlling all TLs is created.')] = None):
+         agent_lights_file:Ann[Opt[str], typer.Option(help='filename consisting of the TLs that are assigned to each RL agent. Each line corresponds to a different agent consists of a comma-separated list of TL ids to be controlled by that agent. A file with N lines corresponds to N agents. If not given then a single agent controlling all TLs is created.')] = None,
+         record_input_output:Ann[Opt[bool], typer.Option(help="If set, records detailed input (state) output (action) pairs for each agent as a set of csv files.")] = False):
     """
     This is the main function of the traffic rl script. It does all the command line processing.
     """
@@ -106,7 +107,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, epsilon_final=epsilon_final, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq,greedy_prob=greedy_prob)
+    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, epsilon_final=epsilon_final, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq,greedy_prob=greedy_prob, record_input_output=record_input_output)
 
     if test:
         print(f"Average reward is: {np.mean(rewards):0.1f} \u00B1 {np.std(rewards):0.1f}")
@@ -120,12 +121,22 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, epsilon_final, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,greedy_prob):
+def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, epsilon_final, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,greedy_prob,record_input_output):
     from rl import DQNEnsemble
 
     mini_schema = env.get_action_breakdown()
     # print(mini_schema)
     # print(env.schema)
+
+    # we create a csv file for each agend and write out the headers (x0,x1,x2,...,xn,a) 
+    # where x0,...,xn is the state and a is the action taken by the agent
+    if record_input_output:
+        files={}
+        for agentID, (obs_dim, num_actions) in mini_schema.items():
+            files[agentID] = open(f"{output_path}/agent_io_"+str(agentID)+".csv", "w")
+            files[agentID].write(",".join(map(lambda x: "x"+str(x),range(obs_dim))))
+            files[agentID].write(",a\n")
+        
     dqn_agent = DQNEnsemble(schema=mini_schema, network_layers=network_layers, learning_rate=lr, discount_factor=gamma, epsilon=epsilon, epsilon_decay=(epsilon_final/epsilon)**(1/(num_episodes-1)),batch_size=batch_size, memory_capacity=replay_buffer_size)
 
     print(f"We are using {len(dqn_agent.agents)} agents")
@@ -150,7 +161,17 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
             if random()<=greedy_prob:
                 A = env.choose_greedy_action()
             else:
-                A = dqn_agent.choose_action(S, deterministic = test)                
+                A = dqn_agent.choose_action(S, deterministic = test)
+
+            # at this point, if needed, we record the state,action pair for each agent
+            if record_input_output:
+                # record S,A in table
+                for agentID,state in S.items():
+                    files[agentID].write(",".join(map(str,state)))
+                    files[agentID].write(",")
+                    files[agentID].write(str(A[agentID])+"\n")
+                
+               
             S_new, R, done = env.step(action=A)
 
             tot_R = sum(r for agID,r in R.items())
@@ -178,6 +199,11 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
 
     final_save_name = os.path.join(output_path, 'models', out_model_fname)
     dqn_agent.save_to_file(final_save_name)
+
+    # remember to close all the files
+    if record_input_output:
+        for agentID,f in files.items():
+            f.close()
     return rewards
 
 if __name__ == "__main__":
