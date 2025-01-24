@@ -36,7 +36,7 @@ class TrafficControlEnv:
     with traffic light actions passed through and observations from lane
     occupancy received back from sumo.
     """
-    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", record_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None, greedy_action=False,random_action=False,agent_lights_file=None):
+    def __init__(self, net_fname = 'sumo_data/RussianJunction/RussianJunction.net.xml', vehicle_spawn_rate=0.015, state_wrapper=None, episode_length=500, sumo_timestep=20, use_gui=False, seed=None,step_length=1, output_path="output", record_tracks=False, car_length=5, record_screenshots = False, gui_config_file = None, real_routes_file = None,agent_lights_file=None):
         """ A basic constructor. We read the network file with sumolib and we
         start the sumo (or sumo-gui) program. We then initialize routes and save
         the state for quick reloading whenever we reset.
@@ -61,8 +61,6 @@ class TrafficControlEnv:
         self.record_screenshots = record_screenshots
         self.gui_config_file = gui_config_file
         self.real_routes_file = real_routes_file
-        self.greedy_action = greedy_action
-        self.random_action=random_action
 
 
         # set self.simple_state to True if you want a simplified state that already computes 
@@ -237,11 +235,8 @@ class TrafficControlEnv:
         done: boolean
             is true if the episode is finished
         """
-        if self.random_action or self.greedy_action or action is None:
-            if self.random_action or action is None:
-                action = self._choose_random_action()
-            elif self.greedy_action:
-                action = self.choose_greedy_action()
+        if action is None:
+            action = self.choose_random_action()
 
         self._applyMultiaction(action)
 
@@ -262,7 +257,7 @@ class TrafficControlEnv:
 
         return multi_state, multi_reward, done
 
-    def _choose_random_action(self):
+    def choose_random_action(self):
         multi_action = dict()
         for agID in self.schema.keys():
             num_actions = self.schema[agID]["dims"][1]

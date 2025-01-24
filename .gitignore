@@ -6,6 +6,7 @@ state.sumo
 script*
 tmp
 misc/
+orange/
 *.txt
 *.csv
 *.sh

@@ -103,11 +103,11 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, random_action=random_action,agent_lights_file=agent_lights_file)
+    env = TrafficControlEnv(net_fname=net_fname, vehicle_spawn_rate=vehicle_spawn_rate, state_wrapper=None, episode_length=episode_length,use_gui=use_gui,sumo_timestep=sumo_timestep, seed=seed, step_length=step_length, output_path=output_path,record_tracks=record_tracks,car_length=car_length,record_screenshots = record_screenshots, gui_config_file = gui_config_file, real_routes_file = real_routes_file, agent_lights_file=agent_lights_file)
 
 
 
-    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, epsilon_final=epsilon_final, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq,greedy_prob=greedy_prob, record_input_output=record_input_output)
+    rewards = rl_loop(env=env, cuda=cuda, network_layers=network_layers, output_path=output_path, gamma=gamma, replay_buffer_size=replay_buffer_size, num_episodes=num_episodes, test=test, lr=lr, epsilon=epsilon, epsilon_final=epsilon_final, batch_size=batch_size, save_intermediate=save_intermediate, in_model_fname = in_model_fname, out_model_fname=out_model_fname, update_freq=update_freq,random_action=random_action, greedy_prob=greedy_prob, record_input_output=record_input_output)
 
     if test:
         print(f"Average reward is: {np.mean(rewards):0.1f} \u00B1 {np.std(rewards):0.1f}")
@@ -121,7 +121,7 @@ def main(net_fname: Ann[str, typer.Argument(help="the filename of the sumo netwo
 
 
 
-def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, epsilon_final, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,greedy_prob,record_input_output):
+def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, num_episodes, test, lr, epsilon, epsilon_final, batch_size, save_intermediate, in_model_fname, out_model_fname,update_freq,random_action,greedy_prob,record_input_output):
     from rl import DQNEnsemble
 
     mini_schema = env.get_action_breakdown()
@@ -158,7 +158,9 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
         while not done:
             S = S_new # Update the current state
 
-            if random()<=greedy_prob:
+            if random_action:
+                A = env.choose_random_action()
+            elif greedy_prob>0.0 and random()<=greedy_prob:
                 A = env.choose_greedy_action()
             else:
                 A = dqn_agent.choose_action(S, deterministic = test)
@@ -187,11 +189,14 @@ def rl_loop(env, cuda, network_layers, output_path, gamma, replay_buffer_size, n
                     dqn_agent.update_target_model()
                     steps_to_update = update_freq
                     
-        dqn_agent.decay_epsilon()
-        # print(f"epsilon = {dqn_agent.agents[0].epsilon}")
+                dqn_agent.decay_epsilon()
+                # print(f"epsilon = {dqn_agent.agents[0].epsilon}")
             
         rewards.append(tot_reward)
-        print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
+        if test:
+            print(f"Testing: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
+        else:
+            print(f"Training: {e+1}/{num_episodes} tot_reward={tot_reward}",end='\n')
 
         if save_intermediate:
             save_fname = os.path.join(output_path, 'models', f"{os.path.splitext(out_model_fname)[0]}{e:04d}.pt")
